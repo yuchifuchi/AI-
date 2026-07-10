@@ -1,0 +1,24 @@
+# 本物の接続設定（実トークン・実パスワードを含む）は絶対にコミットしない。
+# 実ファイルは本番サーバ(munu)上にだけ置く。共有用は *.example.asp を使う。
+kb_config.asp
+munu/kb_config.asp
+
+# 秘密値そのもの
+*.secret
+*.secret.*
+secrets/
+.env
+.env.*
+
+# Lambda デプロイ用の一時 zip
+*.zip
+
+# OS/エディタの一時ファイル
+.DS_Store
+Thumbs.db
+*~
+*.swp
+
+# Python のコンパイル済み一時ファイル
+__pycache__/
+*.pyc

@@ -1,0 +1,19 @@
+{
+  "_comment": "Lambda(munu-kb-routeb) の環境変数の見本。実値はコンソールで設定する。この見本はコミットしてよいが、RELAY_KEY/ADMIN_OP_KEY の実値は絶対に書かないこと。",
+
+  "KB_ID": "HA7C6GUZYZ",
+  "DATA_SOURCE_ID": "＜データソースID＞",
+  "KB_BUCKET": "munu-tacit-kb-＜実名＞",
+  "MODEL_ARN": "arn:aws:bedrock:ap-northeast-1:262504054116:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0",
+
+  "RELAY_KEY": "＜32桁以上のランダム英数字・munuのkb_config.aspと完全一致＞",
+  "ADMIN_OP_KEY": "＜RELAY_KEYとは別の32桁以上のランダム英数字＞",
+
+  "KB_PREFIX": "tacit",
+  "NUM_RESULTS": "20",
+  "CONTEXT_CHUNKS": "8",
+
+  "ALLOWED_IPS": "",
+  "_note_ALLOWED_IPS": "最初は空のままにする。munuからの動作確認後に会社の公開IP（例 203.0.113.10/32・カンマ区切りで複数可）を設定して多層防御を有効化（→ manual/01 ステップ8）。空だとIP制限は無効だが RELAY_KEY で守られる。プレースホルダ文字列のまま入れると全リクエストが forbidden になるので注意。",
+  "MAX_SENSITIVITY": "mid"
+}

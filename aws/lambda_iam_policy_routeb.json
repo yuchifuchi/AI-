@@ -1,0 +1,62 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "KbBucketReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::KB_BUCKET_NAME/*"
+    },
+    {
+      "Sid": "KbBucketList",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::KB_BUCKET_NAME"
+    },
+    {
+      "Sid": "BedrockRetrieve",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:Retrieve"
+      ],
+      "Resource": "arn:aws:bedrock:ap-northeast-1:ACCOUNT_ID:knowledge-base/KB_ID"
+    },
+    {
+      "Sid": "BedrockIngest",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:StartIngestionJob"
+      ],
+      "Resource": "arn:aws:bedrock:ap-northeast-1:ACCOUNT_ID:knowledge-base/KB_ID"
+    },
+    {
+      "Sid": "BedrockInvokeModel",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:GetInferenceProfile"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:ap-northeast-1:ACCOUNT_ID:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0"
+      ]
+    },
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:ap-northeast-1:ACCOUNT_ID:log-group:/aws/lambda/munu-kb-routeb:*"
+    }
+  ]
+}
