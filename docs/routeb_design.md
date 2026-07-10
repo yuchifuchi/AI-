@@ -55,8 +55,9 @@
 | action | 主なフィールド | 用途 |
 |---|---|---|
 | `register` | type, title, body, author, category, sensitivity | 気づき登録 |
+| `register_bulk` | items[]（slug, title, body, category, sensitivity） | **公式マニュアルの一括投入（管理者専用）**。`X-Admin-Key` 必須。slugから決定的doc_id（md5→32hex）で**上書き更新**、取り込みは最後に1回。件別結果を `results`／`results_tsv` で返す |
 | `ask` | question, history | AI質問（historyは直近3ターン） |
-| `admin`（`op=list`） | op | 一覧 |
+| `admin`（`op=list`） | op | 一覧（応答の rows_tsv に `type` 列を含む） |
 | `admin`（`op=get`） | op, id | 1件取得（編集フォーム用） |
 | `admin`（`op=edit`） | op, id, title, body, category, author, sensitivity | 編集 |
 | `admin`（`op=delete`） | op, id | 削除 |
@@ -103,7 +104,7 @@
 
 | 項目 | 内容 | 対応 |
 |---|---|---|
-| munuレグのHTTP | ブラウザ↔munu が平文だと管理PW・セッションが覗かれ得る | munuのHTTPS化（Phase 3の一部） |
+| munuレグのHTTP | ブラウザ↔munu が平文だと管理PW・セッションが覗かれ得る | munuのHTTPS化＝**手順は `manual/06_munu_https.md`**（証明書→443バインド→HTTP→HTTPSリダイレクト→Cookie Secure化） |
 | kb_config.asp 平文 | 秘密が平文で1ファイルに集約 | Webルート外へ退避／OS資格情報ストア化を検討 |
 | LOGON_USER の信頼 | 監査の「誰が」はmunuが付ける値。munu自体は信頼前提 | 監査目的では十分。改ざん耐性が要るなら真の認証基盤へ |
 | Function URL は世界から到達可能 | 鍵とIP allowlistで守るが、URL自体は公開エンドポイント | 鍵の長さ・定期ローテ、IP allowlist、必要なら前段WAF |

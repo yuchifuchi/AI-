@@ -16,6 +16,7 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
 | `kb_register.asp` | 気づき登録フォーム | いいえ |
 | `kb_ask.asp` | AI質問・会話画面 | いいえ |
 | `kb_admin.asp` | 管理画面 | いいえ |
+| `kb_bulk.asp` | 公式マニュアルの一括投入（管理者用） | いいえ |
 | `kb_config.example.asp` | 設定の**見本**（これを元に本物を作る） | いいえ |
 | **`kb_config.asp`** | **本物の設定（これから作る）** | **★はい（合鍵入り。厳重管理）** |
 
@@ -52,26 +53,27 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
 
 ## ステップ2. すべてのASPファイルもUTF-8で用意
 
-`kb_lib.asp` / `kb_register.asp` / `kb_ask.asp` / `kb_admin.asp` も、**UTF-8（BOMなし）** であることを確認します。
+`kb_lib.asp` / `kb_register.asp` / `kb_ask.asp` / `kb_admin.asp` / `kb_bulk.asp` も、**UTF-8（BOMなし）** であることを確認します。
 このリポジトリのファイルは元からUTF-8です。エディタで開いて別名保存し直す場合も、文字コードをUTF-8のままにしてください。
 
 ---
 
 ## ステップ3. munu にアップロードする
 
-1. munu の **`…/tacit2/`** フォルダへ、次の**5ファイル**を置く：
+1. munu の **`…/tacit2/`** フォルダへ、次の**6ファイル**を置く：
    - `kb_config.asp`（本物）
    - `kb_lib.asp`
    - `kb_register.asp`
    - `kb_ask.asp`
    - `kb_admin.asp`
+   - `kb_bulk.asp`
 2. `kb_config.example.asp` は**置かなくてよい**（見本なので。置いても害はない）。
 
 > 🔒 **`kb_config.asp` の扱い**：これは合鍵入りの秘密ファイルです。
 > - GitHub等に上げない（このリポジトリでは `.gitignore` 済み）。
 > - 可能なら Webルート外に置いて include するのが理想（`docs/routeb_design.md §7`）。まずは `tacit2/` 内でも可。
 
-✅ こうなれば成功：`tacit2/` に5ファイルが並んでいる。
+✅ こうなれば成功：`tacit2/` に6ファイルが並んでいる。
 
 ---
 
@@ -89,10 +91,15 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
    - （さっき登録した内容について聞くと、数分後の同期後に反映されます）
 
 3. **管理：** `http://www.hanbai.mint.go.jp/tacit2/kb_admin.asp`
-   - `ADMIN_PASSWORD` でログイン → **一覧が表示**されれば成功。
+   - `ADMIN_PASSWORD` でログイン → **一覧が表示**されれば成功（一覧には「種別（公式/暗黙知）」列があります）。
    - 1件「編集」→保存、または「削除」を試し、**「✅ …しました」** が出れば、管理opのサーバ側認可（ADMIN_OP_KEY）まで通っています。
 
-✅ こうなれば成功：登録・質問・管理の3画面がすべて動く。
+4. **公式一括投入：** `http://www.hanbai.mint.go.jp/tacit2/kb_bulk.asp`（管理画面から「公式一括投入」でも入れます）
+   - `ADMIN_PASSWORD` でログイン → `.md`/`.txt` を数件選び、プレビュー表が出れば読み取りOK。
+   - 「この内容で公式登録する」→ **「✅ N/N 件を登録・更新しました」** が出れば、`register_bulk`（ADMIN_OP_KEY）まで通っています。
+   - 同じファイル名で再投入すると **🔁 更新**（重複せず上書き）になることも確認できます。
+
+✅ こうなれば成功：登録・質問・管理・公式一括投入の4画面がすべて動く。
 
 ---
 
@@ -113,7 +120,7 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
 ## このマニュアルのゴール
 
 - [ ] `kb_config.asp` を作り、5つの値を本物に置換し、UTF-8（BOMなし）で保存した。
-- [ ] 5ファイルを `tacit2/` に置いた。
+- [ ] 6ファイルを `tacit2/` に置いた。
 - [ ] 登録・質問・管理の3画面が動くことを確認した。
 
 次は、旧方式から新方式へ安全に切り替える **`04_migration.md`** へ。

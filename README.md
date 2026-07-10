@@ -23,6 +23,7 @@ munu/                           … munu(IIS/classic ASP) に置くファイル
   kb_register.asp               … 気づき登録フォーム
   kb_ask.asp                    … AI質問・会話画面
   kb_admin.asp                  … 管理画面（一覧・編集・削除。パスワード＋サーバ側認可）
+  kb_bulk.asp                   … 公式マニュアルの一括投入（管理者用・ブラウザ読取→上書き対応）
 
 aws/                            … AWS 側に入れるもの
   lambda_routeb.py              … 新Lambda（Function URL版）本体
@@ -43,6 +44,7 @@ docs/
     03_phase1_hardening.md
     04_migration.md
     05_verify_troubleshoot.md
+    06_munu_https.md
 ```
 
 ---

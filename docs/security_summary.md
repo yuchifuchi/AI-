@@ -47,6 +47,7 @@
 - **ヘッダ注入対策**：`X-Relay-User` は `SanitizeHeader` でCR/LF・非ASCIIを除去してから付与。
 - **最小権限IAM**：実行ロールは対象バケット/KB/モデルのARNに限定（`aws/lambda_iam_policy_routeb.json`）。
 - **過剰ログ抑制**：回答全文・秘密値はログに残さない（質問は本文を残さず長さのみ記録）。
+- **公式化の権威偽装ふせぎ**：一般の登録フォームからは `type=official` に**昇格できない**（`do_register` で X-Admin-Key 不一致なら tacit に落とす）。公式マニュアルの一括投入（`register_bulk`／`kb_bulk.asp`）は **X-Admin-Key を必須検証**する管理操作で、UIログインを迂回されても鍵が無ければ実行されない。ファイル内容の目印文字列 `[[一般]]` はサーバ側で除去（`_strip_markers`）。
 
 ---
 
@@ -54,7 +55,7 @@
 
 | 課題 | 対応（どのマニュアル/フェーズか） |
 |---|---|
-| munuレグが平文HTTP | munuのHTTPS化（`manual/04` 移行後の仕上げ／Phase 3） |
+| munuレグが平文HTTP | munuのHTTPS化＝**手順書 `manual/06_munu_https.md`**（証明書→443バインド→HTTP→HTTPSリダイレクト→セッションCookie Secure化） |
 | `kb_config.asp` 平文集約 | Webルート外退避・資格情報ストア化（運用ルール） |
 | コスト暴走の実停止 | Budgets Action＋Lambda予約同時実行（`manual/03` Phase 1） |
 | 削除の可逆化・追跡 | S3バージョニング＋CloudTrailデータイベント（`manual/03` Phase 1） |

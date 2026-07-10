@@ -15,5 +15,8 @@
 
   "ALLOWED_IPS": "",
   "_note_ALLOWED_IPS": "最初は空のままにする。munuからの動作確認後に会社の公開IP（例 203.0.113.10/32・カンマ区切りで複数可）を設定して多層防御を有効化（→ manual/01 ステップ8）。空だとIP制限は無効だが RELAY_KEY で守られる。プレースホルダ文字列のまま入れると全リクエストが forbidden になるので注意。",
-  "MAX_SENSITIVITY": "mid"
+  "MAX_SENSITIVITY": "mid",
+
+  "MAX_BULK_ITEMS": "50",
+  "_note_MAX_BULK_ITEMS": "公式マニュアル一括投入(action=register_bulk)で1回に受け付ける最大件数。munu側UI(kb_bulk.asp)は15件までで送るため、通常はこの既定のままでよい。"
 }

@@ -38,6 +38,7 @@ import re
 import json
 import hmac
 import uuid
+import hashlib
 import ipaddress
 import datetime
 
@@ -57,6 +58,8 @@ CONTEXT_CHUNKS = int(os.environ.get("CONTEXT_CHUNKS", "8"))
 RELAY_KEY = os.environ.get("RELAY_KEY", "")
 ADMIN_OP_KEY = os.environ.get("ADMIN_OP_KEY", "")
 ALLOWED_IPS = [c.strip() for c in os.environ.get("ALLOWED_IPS", "").split(",") if c.strip()]
+# 公式マニュアルの一括投入(register_bulk)で1回に受け付ける最大件数（多重POSTでの過負荷を防ぐ）
+MAX_BULK_ITEMS = int(os.environ.get("MAX_BULK_ITEMS", "50"))
 
 # 機微度の順序（小さいほど公開寄り）
 _SENS_ORDER = {"low": 0, "mid": 1, "high": 2}
@@ -128,6 +131,23 @@ def _strip_markers(s):
 
 def _valid_id(doc_id):
     return bool(re.fullmatch(r"[0-9a-fA-F]{32}", doc_id or ""))
+
+
+def _slugify(s):
+    """ファイル名等から安定した識別子(slug)を作る。英数・ハイフン・アンダースコアのみ。
+    公式マニュアルの『同一性』を表すキー。日本語等は落ちるため、その場合は呼び出し側で
+    タイトルのハッシュ等を代替に使う想定（→ do_register_bulk）。"""
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^a-z0-9_-]+", "-", s)     # 使えない文字はハイフンへ
+    s = re.sub(r"[-_]{2,}", "-", s).strip("-_")
+    return s[:80]
+
+
+def _official_doc_id(slug):
+    """slug から決定的な 32桁hex の doc_id を作る。
+    同じ slug は必ず同じ doc_id → 同じS3キーへ『上書き』となり重複が増えない。
+    32桁hex なので既存の _valid_id / 管理画面(get/edit/delete)とそのまま互換。"""
+    return hashlib.md5(("official:" + (slug or "")).encode("utf-8")).hexdigest()
 
 
 def _san(s):
@@ -248,6 +268,8 @@ def lambda_handler(event, context):
     try:
         if action == "register":
             return do_register(body, headers, ctx)
+        elif action == "register_bulk":
+            return do_register_bulk(body, headers, ctx)
         elif action == "ask":
             return do_ask(body, ctx)
         elif action == "admin":
@@ -314,11 +336,15 @@ def _build_doc_text(type_label, title, author, date, category, body):
     return header + "\n\n" + body
 
 
-def _build_meta(type_meta, title, author, category, date, sensitivity):
-    return {"metadataAttributes": {
+def _build_meta(type_meta, title, author, category, date, sensitivity, slug=None):
+    attrs = {
         "type": type_meta, "title": title, "author": author,
         "category": category, "date": date, "sensitivity": sensitivity,
-    }}
+    }
+    # 公式マニュアルは元ファイル由来の slug を保持（表示・再投入の同一性確認用）。
+    if slug:
+        attrs["slug"] = slug
+    return {"metadataAttributes": attrs}
 
 
 def _ingest():
@@ -327,6 +353,108 @@ def _ingest():
     except ClientError as e:
         if e.response.get("Error", {}).get("Code") != "ConflictException":
             print("ingestion error:", repr(e))
+
+
+# ============================================================
+#  公式マニュアルの一括投入（register_bulk）── 管理者専用
+# ============================================================
+#  ・複数の「公式文書(official)」をまとめて登録/更新する。
+#  ・X-Admin-Key を必須検証（＝管理操作。UI/画面PWを迂回しても鍵が無ければ実行しない）。
+#  ・各件は slug から決定的な doc_id を作り、同じ slug は『上書き更新』（重複を作らない）。
+#  ・S3書き込みは件数分行うが、取り込み(ingestion)は最後に「1回だけ」。
+#  ・件別の結果(results)と、classic ASP が解析しやすい results_tsv を同梱して返す。
+# ============================================================
+def do_register_bulk(body, headers, ctx):
+    # ★管理操作のサーバ側認可：X-Admin-Key を定数時間比較で検証（do_admin と同じ守り）
+    if not ADMIN_OP_KEY:
+        print("CONFIG ERROR: ADMIN_OP_KEY is not set")
+        return _resp(500, {"ok": False, "error": "server_misconfigured"})
+    if not _ct_eq(headers.get("x-admin-key", ""), ADMIN_OP_KEY):
+        _audit("deny_admin_key", ctx, op="register_bulk")
+        return _resp(403, {"ok": False, "error": "admin_forbidden"})
+
+    items = body.get("items")
+    if not isinstance(items, list) or not items:
+        return _resp(400, {"ok": False, "error": "items_required"})
+    if len(items) > MAX_BULK_ITEMS:
+        return _resp(400, {"ok": False, "error": "too_many_items"})
+
+    today = _today_jst()
+    results = []
+    wrote_any = False
+
+    for it in items:
+        if not isinstance(it, dict):
+            results.append({"slug": "", "ok": False, "error": "bad_item"})
+            continue
+
+        raw_slug = (it.get("slug") or "").strip()
+        title = _strip_markers((it.get("title") or "").strip())
+        text_body = _strip_markers((it.get("body") or "").strip())
+        author = (it.get("author") or "").strip() or "公式"
+        category = (it.get("category") or "").strip() or "公式マニュアル"
+        sensitivity = (it.get("sensitivity") or "low").strip().lower()
+        if sensitivity not in _SENS_ORDER:
+            sensitivity = "low"
+
+        # slug を正規化。英数字が全く無いファイル名（日本語名など）は、タイトルの
+        # ハッシュを安定キーの代替にして『同一タイトルの再投入＝上書き』を成立させる。
+        slug = _slugify(raw_slug)
+        if not slug:
+            if title:
+                slug = "t-" + hashlib.md5(title.encode("utf-8")).hexdigest()[:16]
+            else:
+                results.append({"slug": raw_slug, "ok": False, "error": "slug_required"})
+                continue
+
+        if not title or not text_body:
+            results.append({"slug": slug, "ok": False, "error": "title_body_required"})
+            continue
+
+        doc_id = _official_doc_id(slug)
+        base = KB_PREFIX + "/" + doc_id + ".txt"
+
+        # 既存なら『更新』、無ければ『新規』（表示用。処理自体はどちらも put で上書き）
+        mode = "create"
+        try:
+            s3.head_object(Bucket=KB_BUCKET, Key=base)
+            mode = "update"
+        except ClientError:
+            mode = "create"
+
+        text = _build_doc_text("公式文書（正式・確定情報）", title, author, today, category, text_body)
+        meta = _build_meta("official", title, author, category, today, sensitivity, slug=slug)
+        try:
+            s3.put_object(Bucket=KB_BUCKET, Key=base,
+                          Body=text.encode("utf-8"),
+                          ContentType="text/plain; charset=utf-8")
+            s3.put_object(Bucket=KB_BUCKET, Key=base + ".metadata.json",
+                          Body=json.dumps(meta, ensure_ascii=False).encode("utf-8"),
+                          ContentType="application/json")
+            wrote_any = True
+            results.append({"slug": slug, "id": doc_id, "ok": True, "mode": mode})
+        except Exception as e:
+            print("bulk put error:", repr(e))
+            results.append({"slug": slug, "id": doc_id, "ok": False, "error": "write_failed"})
+
+    # 取り込みは全書き込みの後に1回だけ（件数分の無駄打ち・レース回避）
+    if wrote_any:
+        _ingest()
+
+    ok_n = sum(1 for r in results if r.get("ok"))
+    _audit("register_bulk", ctx, total=len(items), ok=ok_n)
+
+    # classic ASP が配列を解析せず描画できるよう TSV も同梱：
+    #   1行 = slug \t ok(1/0) \t mode(create/update) \t error
+    tsv = "\n".join("\t".join([
+        _san(r.get("slug", "")), ("1" if r.get("ok") else "0"),
+        _san(r.get("mode", "")), _san(r.get("error", "")),
+    ]) for r in results)
+
+    return _resp(200, {"ok": True, "op": "register_bulk",
+                       "total": len(items), "ok_count": ok_n,
+                       "ingested": wrote_any, "results": results,
+                       "results_tsv": tsv})
 
 
 # ============================================================
@@ -444,9 +572,10 @@ def do_admin(body, headers, ctx):
     if op == "list":
         rows = _admin_list()
         # classic ASP が JSON配列を解析せずに描画できるよう、TSV文字列も同梱する。
-        # 1行 = id \t date \t title \t author \t category \t sensitivity
+        # 1行 = id \t date \t title \t author \t category \t sensitivity \t type
         tsv = "\n".join("\t".join([
-            it["id"], it["date"], it["title"], it["author"], it["category"], it["sensitivity"]
+            it["id"], it["date"], it["title"], it["author"], it["category"],
+            it["sensitivity"], it["type"]
         ]) for it in rows["items"])
         return _resp(200, {"ok": True, "op": "list",
                            "total": rows["total"], "items": rows["items"],
@@ -478,14 +607,16 @@ def do_admin(body, headers, ctx):
         if not _valid_id(doc_id) or not title or not text_body:
             return _resp(400, {"ok": False, "error": "id_title_body_required"})
         # 既存の種別(official/tacit)を保持する。編集で「公式文書」を「暗黙知」に格下げしない。
-        cur_type = (_kb_meta(doc_id).get("type") or "tacit").strip().lower()
+        cur = _kb_meta(doc_id)
+        cur_type = (cur.get("type") or "tacit").strip().lower()
+        cur_slug = cur.get("slug")  # 公式マニュアルの slug は編集後も維持（再投入の同一性）
         if cur_type == "official":
             type_meta, type_label = "official", "公式文書（正式・確定情報）"
         else:
             type_meta, type_label = "tacit", "職員の気づき（暗黙知・未確定の参考情報）"
         today = _today_jst()
         text = _build_doc_text(type_label, title, author, today, category, text_body)
-        meta = _build_meta(type_meta, title, author, category, today, sensitivity)
+        meta = _build_meta(type_meta, title, author, category, today, sensitivity, slug=cur_slug)
         base = KB_PREFIX + "/" + doc_id + ".txt"
         s3.put_object(Bucket=KB_BUCKET, Key=base,
                       Body=text.encode("utf-8"), ContentType="text/plain; charset=utf-8")
@@ -535,6 +666,7 @@ def _admin_list():
             "author": _san(m.get("author", "")),
             "category": _san(m.get("category", "")),
             "sensitivity": _san(m.get("sensitivity", "low")),
+            "type": _san(m.get("type", "tacit")),
         })
     rows.sort(key=lambda r: r["date"], reverse=True)
     capped = rows[:200]

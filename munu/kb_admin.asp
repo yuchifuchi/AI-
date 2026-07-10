@@ -168,6 +168,8 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
  .date{white-space:nowrap;color:#475569;}
  .sens{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;}
  .s-low{background:#ecfdf5;color:#065f46;} .s-mid{background:#fffbeb;color:#92400e;} .s-high{background:#fef2f2;color:#991b1b;}
+ .typ{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap;}
+ .t-off{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;} .t-tac{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
  .act a,.act button{font-size:.82rem;}
  .del{background:#fef2f2;border:1px solid var(--ng);color:#991b1b;border-radius:7px;padding:4px 10px;cursor:pointer;}
  .edit{display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:4px 10px;margin-right:6px;}
@@ -182,7 +184,7 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
 
 <div class="bar">
   <h1>🗂 暗黙知 管理画面</h1>
-  <div><a href="kb_admin.asp">一覧へ</a>　／　<a href="kb_ask.asp">質問画面</a>　／　<a href="kb_admin.asp?logout=1">ログアウト</a></div>
+  <div><a href="kb_admin.asp">一覧へ</a>　／　<a href="kb_bulk.asp">公式一括投入</a>　／　<a href="kb_ask.asp">質問画面</a>　／　<a href="kb_admin.asp?logout=1">ログアウト</a></div>
 </div>
 
 <%
@@ -198,14 +200,14 @@ ElseIf Not opOk And view <> "result" Then
 <%
 ElseIf view = "list" Then
     ' ---- 一覧表示（rows_tsv を1行=タブ区切りで解析）----
-    Dim total, tsv, lines, i, parts, sclass
+    Dim total, tsv, lines, i, parts, sclass, ptype, tcls, tlbl
     total = JsonRaw(resp, "total")
     tsv = JsonStr(resp, "rows_tsv")
 %>
   <div class="card">
     <p class="muted">登録済みの暗黙知：<%= Server.HTMLEncode(total) %> 件（新しい順・最大200件表示）</p>
     <table>
-      <tr><th>登録日</th><th>タイトル</th><th>登録者</th><th>カテゴリ</th><th>機微度</th><th>操作</th></tr>
+      <tr><th>登録日</th><th>タイトル</th><th>登録者</th><th>カテゴリ</th><th>種別</th><th>機微度</th><th>操作</th></tr>
 <%
     If Len(tsv) > 0 Then
         lines = Split(tsv, vbLf)
@@ -216,12 +218,20 @@ ElseIf view = "list" Then
                     sclass = "s-low"
                     If parts(5) = "mid" Then sclass = "s-mid"
                     If parts(5) = "high" Then sclass = "s-high"
+                    ptype = "tacit"
+                    If UBound(parts) >= 6 Then ptype = parts(6)
+                    If ptype = "official" Then
+                        tcls = "t-off" : tlbl = "公式"
+                    Else
+                        tcls = "t-tac" : tlbl = "暗黙知"
+                    End If
 %>
       <tr>
         <td class="date"><%= Server.HTMLEncode(parts(1)) %></td>
         <td><%= Server.HTMLEncode(parts(2)) %></td>
         <td><%= Server.HTMLEncode(parts(3)) %></td>
         <td><%= Server.HTMLEncode(parts(4)) %></td>
+        <td><span class="typ <%= tcls %>"><%= tlbl %></span></td>
         <td><span class="sens <%= sclass %>"><%= Server.HTMLEncode(parts(5)) %></span></td>
         <td class="act">
           <a class="edit" href="kb_admin.asp?action=editform&amp;id=<%= Server.URLEncode(parts(0)) %>">編集</a>
