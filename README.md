@@ -54,6 +54,10 @@ docs/
 
 ## どこから読めばいい？（順番）
 
+> 🆕 **ゼロから本番を新規構築する**なら、これ1本で完結：**`docs/manual/07_production_build.md`**
+> （モデル解禁→KMS→S3→Bedrock KB→Lambda→権限→窓口URL→munu→ログイン→HTTPS→チェックリスト）。
+> 下の `00`〜`06` は、既存環境の改修・移行や個別トピックの詳細リファレンスです。
+
 1. **`docs/manual/00_intro_glossary.md`** … 全体像と、知らない言葉の意味。まずここ。
 2. **`docs/manual/01_aws_setup.md`** … AWSに新Lambdaを作り、URLと鍵を用意する。
 3. **`docs/manual/02_munu_install.md`** … munuにファイルを置き、鍵を設定して動かす。
