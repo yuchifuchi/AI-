@@ -19,12 +19,13 @@ README.md                       … このファイル
 
 munu/                           … munu(IIS/classic ASP) に置くファイル
   kb_config.example.asp         … 接続設定の「見本」。コピーして kb_config.asp を作る
-  kb_lib.asp                    … 共通部品（Lambda呼び出し・JSON読み取り・CSRF・履歴整形）
-  kb_register.asp               … 気づき登録フォーム
-  kb_ask.asp                    … AI質問・会話画面
-  kb_admin.asp                  … 管理画面（一覧・編集・削除。パスワード＋サーバ側認可）
+  kb_lib.asp                    … 共通部品（Lambda呼び出し・JSON・CSRF・履歴整形・画面ログイン/保護ヘッダ）
+  kb_register.asp               … 気づき登録フォーム（ログイン必須）
+  kb_ask.asp                    … AI質問・会話画面（ログイン必須）
+  kb_admin.asp                  … 管理画面（一覧・編集・削除。管理パスワード＋サーバ側認可）
   kb_bulk.asp                   … 公式マニュアルの一括投入（管理者用・.md/.txt＋PDF/Word/Excel等・ブラウザ読取→上書き）
   kb_style.css                  … 全画面共通デザイン（見た目はここに集約。ASPにCSSを書かない）
+  web.config                    … IIS設定（本文上限8MB＋保護ヘッダ。HTTPS化後にSecure/HSTSを有効化）
 
 aws/                            … AWS 側に入れるもの
   lambda_routeb.py              … 新Lambda（Function URL版）本体
@@ -46,6 +47,7 @@ docs/
     04_migration.md
     05_verify_troubleshoot.md
     06_munu_https.md
+    07_production_build.md
 ```
 
 ---

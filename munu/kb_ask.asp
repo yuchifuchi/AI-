@@ -75,6 +75,10 @@ Dim isConfigured
 isConfigured = (Len(RELAY_URL & "") > 0 And InStr(RELAY_URL, "XXXX") = 0 _
     And Len(RELAY_KEY & "") > 0 And RELAY_KEY <> "REPLACE_RELAY_KEY")
 
+' 機微情報を扱うため：キャッシュ抑止ヘッダ＋利用ログインを必須にする（AJAXも保護）
+Call SecHeaders()
+Call RequireUserLogin("ナレッジ検索AI")
+
 ' --- 新しい会話（履歴をリセット）---
 If Request.QueryString("new") = "1" Then
     Session.Contents.Remove("conv")
@@ -191,6 +195,7 @@ End If
         <a href="kb_register.asp">登録</a>
         <a href="kb_admin.asp">管理</a>
       </nav>
+      <a class="mini" href="kb_ask.asp?logout=1">ログアウト</a>
     </header>
 
     <div class="head">

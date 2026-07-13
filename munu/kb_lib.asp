@@ -267,4 +267,114 @@ Function BuildHistory(convStr, uSep, rSep, maxTurns)
     Next
     BuildHistory = s
 End Function
+
+' ============================================================
+'  画面アクセス制御（ログイン）と共通セキュリティヘッダ
+' ============================================================
+'  ・利用ログイン：ACCESS_PASSWORD（質問・登録画面）＝ Session("user_ok")
+'  ・管理ログイン：ADMIN_PASSWORD（管理・一括投入画面・既存）＝ Session("admin_ok")
+'  ・管理者は利用画面にもそのまま入れる（admin_ok は user も満たす）。
+'  ・機微情報を扱うため、全画面でキャッシュ抑止などのヘッダを付ける。
+' ============================================================
+Dim gLoginErr : gLoginErr = ""
+
+Function IsAdmin()
+    IsAdmin = (Session("admin_ok") = True)
+End Function
+
+Function IsUser()
+    IsUser = (Session("admin_ok") = True Or Session("user_ok") = True)
+End Function
+
+' 機微内容がプロキシ/ブラウザにキャッシュされないように。クリックジャッキング等も抑止。
+Sub SecHeaders()
+    Response.Expires = -1
+    Response.AddHeader "Cache-Control", "no-store, no-cache, must-revalidate"
+    Response.AddHeader "Pragma", "no-cache"
+    Response.AddHeader "X-Content-Type-Options", "nosniff"
+    Response.AddHeader "X-Frame-Options", "SAMEORIGIN"
+    Response.AddHeader "Referrer-Policy", "no-referrer"
+End Sub
+
+' 利用ログインを要求する。未ログインならログイン画面（AJAXなら401 JSON）を出して終了。
+'   pageTitle : ログイン画面のタイトル
+Sub RequireUserLogin(pageTitle)
+    Dim selfUrl : selfUrl = Request.ServerVariables("SCRIPT_NAME") & ""
+    Dim isAjax : isAjax = (Request.QueryString("ajax") = "1")
+
+    ' ---- ログアウト ----
+    If Request.QueryString("logout") = "1" Then
+        Session.Contents.Remove("admin_ok")
+        Session.Contents.Remove("user_ok")
+        Response.Redirect selfUrl
+    End If
+
+    ' ---- ログイン処理（利用 or 管理パスワード）----
+    If UCase(Request.ServerVariables("REQUEST_METHOD")) = "POST" And Request.Form("action") = "login" Then
+        If Not CsrfValid(Request.Form("csrf")) Then
+            gLoginErr = "セッションが切れました。もう一度ログインしてください。"
+        Else
+            Dim pw : pw = Request.Form("pw") & ""
+            If Len(ADMIN_PASSWORD & "") > 0 And ADMIN_PASSWORD <> "REPLACE_ADMIN_PASSWORD" _
+               And StrComp(pw, ADMIN_PASSWORD, vbBinaryCompare) = 0 Then
+                Session("admin_ok") = True
+                Response.Redirect selfUrl
+            ElseIf Len(ACCESS_PASSWORD & "") > 0 And ACCESS_PASSWORD <> "REPLACE_ACCESS_PASSWORD" _
+               And StrComp(pw, ACCESS_PASSWORD, vbBinaryCompare) = 0 Then
+                Session("user_ok") = True
+                Response.Redirect selfUrl
+            Else
+                gLoginErr = "パスワードが違います。"
+            End If
+        End If
+    End If
+
+    If IsUser() Then Exit Sub   ' 認証済み → 呼び出し元のページ処理へ続行
+
+    ' ---- 未認証：AJAXは401 JSON、通常はログイン画面 ----
+    If isAjax Then
+        Response.Clear
+        Response.ContentType = "application/json; charset=utf-8"
+        Response.Status = "401 Unauthorized"
+        Response.Write "{""ok"":false,""message"":""ログインの有効期限が切れました。ページを再読み込みしてログインし直してください。""}"
+        Response.End
+    End If
+
+    Call RenderLoginPage(pageTitle)
+    Response.End
+End Sub
+
+' ログイン画面（kb_style.css の authwrap/authbox を使用）
+Sub RenderLoginPage(pageTitle)
+    Dim configured : configured = (Len(ACCESS_PASSWORD & "") > 0 And ACCESS_PASSWORD <> "REPLACE_ACCESS_PASSWORD")
+    Dim relayOk : relayOk = (Len(RELAY_URL & "") > 0 And InStr(RELAY_URL, "XXXX") = 0 _
+        And Len(RELAY_KEY & "") > 0 And RELAY_KEY <> "REPLACE_RELAY_KEY")
+%>
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title><%= Server.HTMLEncode(pageTitle) %>｜ログイン</title>
+<link rel="stylesheet" href="kb_style.css" />
+</head><body>
+<div class="authwrap"><div class="authbox">
+  <div class="card pad">
+    <h1>🔐 <%= Server.HTMLEncode(pageTitle) %></h1>
+    <% If Len(gLoginErr) > 0 Then %><div class="banner ng"><div class="bi" aria-hidden="true">!</div><div><p><%= Server.HTMLEncode(gLoginErr) %></p></div></div><% End If %>
+    <% If Not configured Then %><div class="banner warn"><div class="bi" aria-hidden="true">🔧</div><div><p>kb_config.asp の ACCESS_PASSWORD が未設定です。</p></div></div><% End If %>
+    <% If Not relayOk Then %><div class="banner warn"><div class="bi" aria-hidden="true">🔧</div><div><p>kb_config.asp の RELAY_URL / RELAY_KEY が未設定です。</p></div></div><% End If %>
+    <form method="post" action="<%= Server.HTMLEncode(Request.ServerVariables("SCRIPT_NAME")) %>">
+      <input type="hidden" name="action" value="login" />
+      <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
+      <div class="field">
+        <label>アクセスパスワード</label>
+        <input class="control" type="password" name="pw" autofocus required />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">ログイン</button>
+    </form>
+    <p class="muted">この画面は社内の機微情報を扱います。担当者以外は利用しないでください。</p>
+  </div>
+</div></div>
+</body></html>
+<%
+End Sub
 %>

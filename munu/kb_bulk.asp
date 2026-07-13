@@ -47,9 +47,13 @@ isConfigured = (Len(RELAY_URL & "") > 0 And InStr(RELAY_URL, "XXXX") = 0 _
 
 Dim method : method = UCase(Request.ServerVariables("REQUEST_METHOD"))
 
+' 機微内容を扱うため：キャッシュ抑止などのヘッダを付ける
+Call SecHeaders()
+
 ' ---- ログアウト（kb_admin と共通の Session を破棄）----
 If Request.QueryString("logout") = "1" Then
     Session.Contents.Remove("admin_ok")
+    Session.Contents.Remove("user_ok")
     Response.Redirect "kb_bulk.asp"
 End If
 

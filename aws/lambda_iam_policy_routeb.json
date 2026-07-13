@@ -20,6 +20,15 @@
       "Resource": "arn:aws:s3:::KB_BUCKET_NAME"
     },
     {
+      "Sid": "KbBucketKmsEncryption",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:ap-northeast-1:ACCOUNT_ID:key/KMS_KEY_ID"
+    },
+    {
       "Sid": "BedrockRetrieve",
       "Effect": "Allow",
       "Action": [

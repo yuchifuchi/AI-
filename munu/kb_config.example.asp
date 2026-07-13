@@ -14,7 +14,7 @@
 '    可能なら Webルート外に置き、Include のパスだけを通す運用が望ましい（→マニュアル参照）。
 ' ============================================================
 
-Dim RELAY_URL, RELAY_KEY, ADMIN_OP_KEY, RELAY_PROXY, ADMIN_PASSWORD
+Dim RELAY_URL, RELAY_KEY, ADMIN_OP_KEY, RELAY_PROXY, ADMIN_PASSWORD, ACCESS_PASSWORD
 
 ' --- Lambda Function URL（末尾スラッシュあり）--------------------
 '   形: https://<英数字>.lambda-url.ap-northeast-1.on.aws/
@@ -37,8 +37,14 @@ ADMIN_OP_KEY = "REPLACE_ADMIN_OP_KEY"
 '   Function URL は execute-api と別ホストのためプロキシを通る（疎通確認済み）。
 RELAY_PROXY = "REPLACE_PROXY"
 
-' --- 管理画面（kb_admin.asp）ログイン用パスワード ---------------
-'   画面に入るための第1関門（UI側）。実際のop実行可否は上の ADMIN_OP_KEY で
-'   Lambda がサーバ側でも検証する（二重の守り）。※実値はマスク
+' --- 管理画面（kb_admin.asp / kb_bulk.asp）ログイン用パスワード -----
+'   管理（編集・削除・公式一括投入）に入るための第1関門（UI側）。
+'   実際のop実行可否は上の ADMIN_OP_KEY で Lambda がサーバ側でも検証する（二重の守り）。※実値はマスク
 ADMIN_PASSWORD = "REPLACE_ADMIN_PASSWORD"
+
+' --- 画面アクセス用パスワード（kb_ask.asp / kb_register.asp）--------
+'   社内の機微情報を扱うため、質問・登録の閲覧/利用にもログインを必須にする。
+'   ADMIN_PASSWORD とは別の値にする（利用者に配る“共有パスワード”）。
+'   ※管理者は ADMIN_PASSWORD でこれらの画面にも入れる。※実値はマスク
+ACCESS_PASSWORD = "REPLACE_ACCESS_PASSWORD"
 %>

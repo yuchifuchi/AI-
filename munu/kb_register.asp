@@ -21,6 +21,10 @@ isConfigured = (Len(RELAY_URL & "") > 0 _
     And Len(RELAY_KEY & "") > 0 _
     And RELAY_KEY <> "REPLACE_RELAY_KEY")
 
+' 機微情報を扱うため：キャッシュ抑止ヘッダ＋利用ログインを必須にする
+Call SecHeaders()
+Call RequireUserLogin("気づき登録（暗黙知）")
+
 Dim hasResult, okFlag, rTitle, rDetail
 Dim fTitle, fBody, fCategory, fAuthor
 hasResult = False : okFlag = False : rTitle = "" : rDetail = ""
@@ -112,6 +116,7 @@ End If
         <a href="kb_register.asp" class="is-active" aria-current="page">登録</a>
         <a href="kb_admin.asp">管理</a>
       </nav>
+      <a class="mini" href="kb_register.asp?logout=1">ログアウト</a>
     </header>
 
 <% If hasResult Then %>
