@@ -100,108 +100,83 @@ End If
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>気づき登録（暗黙知）</title>
-  <style>
-    :root{--main:#2563eb;--main-dark:#1d4ed8;--ok-bg:#ecfdf5;--ok-border:#10b981;--ok-text:#065f46;
-      --ng-bg:#fef2f2;--ng-border:#ef4444;--ng-text:#991b1b;--warn-bg:#fffbeb;--warn-border:#f59e0b;--warn-text:#92400e;
-      --ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;}
-    *{box-sizing:border-box;}
-    body{font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
-      background:#f3f4f6;color:var(--ink);margin:0;padding:24px;line-height:1.7;}
-    .wrap{max-width:720px;margin:0 auto;}
-    .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px;
-      box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:20px;}
-    h1{font-size:1.5rem;margin:0 0 6px;}
-    .sub{color:var(--muted);margin:0 0 20px;font-size:.92rem;}
-    label{display:block;font-weight:700;margin:16px 0 6px;}
-    .req{color:var(--ng-border);font-size:.8rem;margin-left:6px;}
-    .opt{color:var(--muted);font-size:.8rem;margin-left:6px;font-weight:400;}
-    input[type=text],textarea{width:100%;padding:11px 12px;border:1px solid #cbd5e1;
-      border-radius:9px;font-size:1rem;font-family:inherit;background:#fff;}
-    input:focus,textarea:focus{outline:none;border-color:var(--main);box-shadow:0 0 0 3px rgba(37,99,235,.15);}
-    textarea{min-height:160px;resize:vertical;}
-    .hint{color:var(--muted);font-size:.82rem;margin:4px 0 0;}
-    button{margin-top:22px;width:100%;padding:13px;font-size:1.05rem;font-weight:700;color:#fff;
-      background:var(--main);border:0;border-radius:10px;cursor:pointer;}
-    button:hover{background:var(--main-dark);}
-    .note{background:#f8fafc;border:1px dashed var(--line);border-radius:10px;padding:12px 14px;
-      font-size:.85rem;color:var(--muted);margin-top:18px;}
-    .banner{border-radius:12px;padding:16px 18px;margin-bottom:20px;}
-    .banner h2{margin:0 0 6px;font-size:1.1rem;} .banner p{margin:4px 0;}
-    .ok{background:var(--ok-bg);border:1px solid var(--ok-border);color:var(--ok-text);}
-    .ng{background:var(--ng-bg);border:1px solid var(--ng-border);color:var(--ng-text);}
-    .warn{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);}
-    .mono{font-family:ui-monospace,Consolas,monospace;font-size:.82rem;}
-    pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:10px;overflow-x:auto;
-      font-size:.82rem;white-space:pre-wrap;word-break:break-word;}
-    .links{margin-top:14px;font-size:.9rem;} .links a{color:var(--main);text-decoration:none;font-weight:700;}
-  </style>
+  <link rel="stylesheet" href="kb_style.css" />
 </head>
 <body>
   <div class="wrap">
+    <header class="topbar">
+      <a class="brand" href="kb_ask.asp"><span class="mark" aria-hidden="true"></span>
+        <span><b>ナレッジ検索AI</b><small>社内の暗黙知＋公式文書</small></span></a>
+      <nav class="nav" aria-label="画面切替">
+        <a href="kb_ask.asp">質問</a>
+        <a href="kb_register.asp" class="is-active" aria-current="page">登録</a>
+        <a href="kb_admin.asp">管理</a>
+      </nav>
+    </header>
 
 <% If hasResult Then %>
   <% If okFlag Then %>
-    <div class="banner ok">
-      <h2>✅ <%= Server.HTMLEncode(rTitle) %></h2>
+    <div class="banner ok"><div class="bi" aria-hidden="true">✓</div>
+      <div><h2><%= Server.HTMLEncode(rTitle) %></h2>
       <p><%= Server.HTMLEncode(rDetail) %></p>
-      <p style="margin-top:10px">続けて登録できます。下のフォームへどうぞ。</p>
-    </div>
+      <p>続けて登録できます。下のフォームへどうぞ。</p></div></div>
   <% Else %>
-    <div class="banner ng">
-      <h2>⚠️ <%= Server.HTMLEncode(rTitle) %></h2>
-      <pre><%= Server.HTMLEncode(rDetail) %></pre>
-    </div>
+    <div class="banner ng"><div class="bi" aria-hidden="true">!</div>
+      <div><h2><%= Server.HTMLEncode(rTitle) %></h2>
+      <pre><%= Server.HTMLEncode(rDetail) %></pre></div></div>
   <% End If %>
 <% End If %>
 
 <% If Not isConfigured Then %>
-    <div class="banner warn">
-      <h2>🔧 接続設定が未完了です</h2>
+    <div class="banner warn"><div class="bi" aria-hidden="true">🔧</div>
+      <div><h2>接続設定が未完了です</h2>
       <p><span class="mono">kb_config.asp</span> の <span class="mono">RELAY_URL</span> /
-         <span class="mono">RELAY_KEY</span> を設定してください。</p>
-    </div>
+         <span class="mono">RELAY_KEY</span> を設定してください。</p></div></div>
 <% End If %>
 
-    <div class="card">
-      <h1>💡 気づき登録フォーム</h1>
-      <p class="sub">
-        業務で気づいたこと・ちょっとしたコツ・注意点などを登録できます。<br>
-        登録内容は「暗黙知（未確定の参考情報）」として、AIナレッジ検索に反映されます。
-      </p>
+    <div class="head">
+      <h1>気づきを登録する</h1>
+      <p>業務で気づいたこと・ちょっとしたコツ・注意点を登録できます。<b>暗黙知</b>としてAIナレッジ検索に反映されます。</p>
+    </div>
 
+    <div class="card pad">
       <form method="post" action="kb_register.asp" accept-charset="UTF-8">
         <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
-        <label>タイトル<span class="req">必須</span></label>
-        <input type="text" name="title" maxlength="200"
-               placeholder="例：来客用駐車場は第2ゲートが空いていることが多い"
-               value="<%= Server.HTMLEncode(showTitle) %>" required />
-        <p class="hint">ひと目で内容が分かる短い見出しを書いてください。</p>
+        <div class="field">
+          <label>タイトル <span class="req">必須</span></label>
+          <input class="control" type="text" name="title" maxlength="200"
+                 placeholder="例：来客用駐車場は第2ゲートが空いていることが多い"
+                 value="<%= Server.HTMLEncode(showTitle) %>" required />
+          <p class="fhint">ひと目で内容が分かる短い見出しを書いてください。</p>
+        </div>
+        <div class="field">
+          <label>本文 <span class="req">必須</span></label>
+          <textarea class="control" name="body"
+                    placeholder="例：午前中は正面の来客駐車場が満車になりがちです。第2ゲート横の3台分は比較的空いているので、来客が多い日はそちらに案内するとスムーズです。"
+                    required><%= Server.HTMLEncode(showBody) %></textarea>
+          <p class="fhint">具体的に書くほど、AIが正しく答えやすくなります。</p>
+        </div>
+        <div class="field">
+          <label>カテゴリ <span class="opttag">任意</span></label>
+          <input class="control" type="text" name="category" maxlength="60"
+                 placeholder="例：来客対応 / 経費 / 設備 / その他"
+                 value="<%= Server.HTMLEncode(showCategory) %>" />
+          <p class="fhint">空欄なら「未分類」になります。</p>
+        </div>
+        <div class="field">
+          <label>登録者名 <span class="opttag">任意</span></label>
+          <input class="control" type="text" name="author" maxlength="60"
+                 placeholder="例：総務課 山田"
+                 value="<%= Server.HTMLEncode(showAuthor) %>" />
+          <p class="fhint">空欄なら「匿名」で登録されます。</p>
+        </div>
 
-        <label>本文<span class="req">必須</span></label>
-        <textarea name="body"
-                  placeholder="例：午前中は正面の来客駐車場が満車になりがちです。第2ゲート横の3台分は比較的空いているので、来客が多い日はそちらに案内するとスムーズです。"
-                  required><%= Server.HTMLEncode(showBody) %></textarea>
-        <p class="hint">具体的に書くほど、AIが正しく答えやすくなります。</p>
+        <div class="note">個人情報やパスワードなど、共有してはいけない情報は書かないでください（AIの回答に使われます）。</div>
 
-        <label>カテゴリ<span class="opt">任意</span></label>
-        <input type="text" name="category" maxlength="60"
-               placeholder="例：来客対応 / 経費 / 設備 / その他"
-               value="<%= Server.HTMLEncode(showCategory) %>" />
-        <p class="hint">空欄なら「未分類」になります。</p>
-
-        <label>登録者名<span class="opt">任意</span></label>
-        <input type="text" name="author" maxlength="60"
-               placeholder="例：総務課 山田"
-               value="<%= Server.HTMLEncode(showAuthor) %>" />
-        <p class="hint">空欄なら「匿名」で登録されます。</p>
-
-        <button type="submit">この内容で登録する</button>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary">この内容で登録する</button>
+        </div>
       </form>
-
-      <div class="note">
-        <strong>ご注意：</strong>ここに登録した内容は AI の回答に使われます。
-        個人情報やパスワードなど、共有してはいけない情報は書かないでください。
-      </div>
 
       <p class="links">▶ 質問してみる：<a href="kb_ask.asp">AIに聞く（チャット）へ</a></p>
     </div>

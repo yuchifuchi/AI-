@@ -9,13 +9,34 @@
 
 ' ---- 文字列を JSON に埋め込める形へ（エスケープ）----
 Function JsonEscape(s)
-    Dim t : t = s & ""
+    Dim t, i, code, out, hasCtrl
+    t = s & ""
     t = Replace(t, "\", "\\")
     t = Replace(t, Chr(34), "\" & Chr(34))
     t = Replace(t, vbCrLf, "\n")
     t = Replace(t, vbCr, "\n")
     t = Replace(t, vbLf, "\n")
     t = Replace(t, vbTab, "\t")
+    ' 残った制御文字(0x00–0x1F)を \u00XX に。放置すると不正JSONになり、
+    ' ブラウザ側の JSON.parse が失敗して回答が丸ごと消える事故を防ぐ。
+    ' ※AscWは高位文字で負値を返すため、必ず「0以上かつ32未満」で判定する。
+    hasCtrl = False
+    For i = 1 To Len(t)
+        code = AscW(Mid(t, i, 1))
+        If code >= 0 And code < 32 Then hasCtrl = True : Exit For
+    Next
+    If hasCtrl Then
+        out = ""
+        For i = 1 To Len(t)
+            code = AscW(Mid(t, i, 1))
+            If code >= 0 And code < 32 Then
+                out = out & "\u" & Right("000" & Hex(code), 4)
+            Else
+                out = out & Mid(t, i, 1)
+            End If
+        Next
+        t = out
+    End If
     JsonEscape = t
 End Function
 

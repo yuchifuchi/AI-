@@ -17,6 +17,7 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
 | `kb_ask.asp` | AI質問・会話画面 | いいえ |
 | `kb_admin.asp` | 管理画面 | いいえ |
 | `kb_bulk.asp` | 公式マニュアルの一括投入（管理者用） | いいえ |
+| `kb_style.css` | 全画面共通のデザイン（見た目はここに集約） | いいえ |
 | `kb_config.example.asp` | 設定の**見本**（これを元に本物を作る） | いいえ |
 | **`kb_config.asp`** | **本物の設定（これから作る）** | **★はい（合鍵入り。厳重管理）** |
 
@@ -53,27 +54,29 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
 
 ## ステップ2. すべてのASPファイルもUTF-8で用意
 
-`kb_lib.asp` / `kb_register.asp` / `kb_ask.asp` / `kb_admin.asp` / `kb_bulk.asp` も、**UTF-8（BOMなし）** であることを確認します。
+`kb_lib.asp` / `kb_register.asp` / `kb_ask.asp` / `kb_admin.asp` / `kb_bulk.asp` / `kb_style.css` も、**UTF-8（BOMなし）** であることを確認します。
 このリポジトリのファイルは元からUTF-8です。エディタで開いて別名保存し直す場合も、文字コードをUTF-8のままにしてください。
+（画面の見た目はすべて `kb_style.css` に集約しています。ASPには色や余白などのCSSを書いていません。）
 
 ---
 
 ## ステップ3. munu にアップロードする
 
-1. munu の **`…/tacit2/`** フォルダへ、次の**6ファイル**を置く：
+1. munu の **`…/tacit2/`** フォルダへ、次の**7ファイル**を置く：
    - `kb_config.asp`（本物）
    - `kb_lib.asp`
    - `kb_register.asp`
    - `kb_ask.asp`
    - `kb_admin.asp`
    - `kb_bulk.asp`
+   - `kb_style.css`（これが無いと画面が“素のHTML”になります）
 2. `kb_config.example.asp` は**置かなくてよい**（見本なので。置いても害はない）。
 
 > 🔒 **`kb_config.asp` の扱い**：これは合鍵入りの秘密ファイルです。
 > - GitHub等に上げない（このリポジトリでは `.gitignore` 済み）。
 > - 可能なら Webルート外に置いて include するのが理想（`docs/routeb_design.md §7`）。まずは `tacit2/` 内でも可。
 
-✅ こうなれば成功：`tacit2/` に6ファイルが並んでいる。
+✅ こうなれば成功：`tacit2/` に7ファイルが並んでいる。
 
 ---
 
@@ -120,7 +123,7 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
 ## このマニュアルのゴール
 
 - [ ] `kb_config.asp` を作り、5つの値を本物に置換し、UTF-8（BOMなし）で保存した。
-- [ ] 6ファイルを `tacit2/` に置いた。
+- [ ] 7ファイルを `tacit2/` に置いた。
 - [ ] 登録・質問・管理の3画面が動くことを確認した。
 
 次は、旧方式から新方式へ安全に切り替える **`04_migration.md`** へ。

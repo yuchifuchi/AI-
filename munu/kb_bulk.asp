@@ -14,11 +14,12 @@ Server.ScriptTimeout = 120
 '  ・画面ログインは第1関門（kb_admin.asp と同じ ADMIN_PASSWORD / Session）。
 '  ・実際の一括登録は Lambda が X-Admin-Key(=ADMIN_OP_KEY) をサーバ側で検証してから実行。
 '  ・ファイルの中身は「管理者のブラウザ(JavaScript/FileReader)」がUTF-8で読み取り、
-'    プレビュー確認後に「通常のフォーム項目」として送信する（＝ASP側のmultipartバイナリ
-'    解析は不要。文字化け・境界バグの温床を避ける）。ここでは Request.Form で受けて
-'    JsonEscape で JSON を組み立て、Lambda の action=register_bulk を1回呼ぶ。
+'    プレビュー確認後に「通常のフォーム項目」として送信する（＝ASP側の multipart 解析は不要）。
+'    ここでは Request.Form で受けて JsonEscape で JSON を組み立て、
+'    Lambda の action=register_bulk を1回呼ぶ。
 '  ・種別は「公式文書(official)」固定。ファイル名＝マニュアルの識別子(slug)で、
 '    同名の再投入は『上書き更新』（重複を作らない）。
+'  ・見た目のCSSは kb_style.css に集約（このASPには style を書かない）。
 ' ============================================================
 
 Const MAX_BULK_UI = 15   ' 1回の投入で受け付ける最大件数（サーバ側の歯止め）
@@ -78,29 +79,25 @@ If Not authed Then
 <html lang="ja"><head><meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>管理ログイン｜公式マニュアル一括投入</title>
-<style>
- body{font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
-   background:#f3f4f6;color:#1f2937;margin:0;padding:48px 24px;line-height:1.7;}
- .box{max-width:420px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px;}
- h1{font-size:1.2rem;margin:0 0 16px;}
- input[type=password]{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;font-size:1rem;}
- button{margin-top:16px;width:100%;padding:12px;font-weight:700;color:#fff;background:#2563eb;border:0;border-radius:10px;cursor:pointer;}
- .err{background:#fef2f2;border:1px solid #ef4444;color:#991b1b;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.9rem;}
- .muted{color:#6b7280;font-size:.82rem;margin-top:14px;}
-</style></head><body>
-<div class="box">
-  <h1>🔐 公式マニュアル 一括投入（管理者）</h1>
-  <% If Len(loginErr) > 0 Then %><div class="err"><%= Server.HTMLEncode(loginErr) %></div><% End If %>
-  <% If Not isConfigured Then %><div class="err">kb_config.asp の RELAY_URL / RELAY_KEY / ADMIN_OP_KEY が未設定です。</div><% End If %>
-  <form method="post" action="kb_bulk.asp">
-    <input type="hidden" name="action" value="login" />
-    <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
-    <label>管理パスワード</label>
-    <input type="password" name="pw" autofocus required />
-    <button type="submit">ログイン</button>
-  </form>
-  <p class="muted">この画面では「公式文書」としてマニュアルを一括登録します。担当者以外は操作しないでください。</p>
-</div>
+<link rel="stylesheet" href="kb_style.css" />
+</head><body>
+<div class="authwrap"><div class="authbox">
+  <div class="card pad">
+    <h1>🔐 公式マニュアル一括投入（管理者）</h1>
+    <% If Len(loginErr) > 0 Then %><div class="banner ng"><div class="bi" aria-hidden="true">!</div><div><p><%= Server.HTMLEncode(loginErr) %></p></div></div><% End If %>
+    <% If Not isConfigured Then %><div class="banner warn"><div class="bi" aria-hidden="true">🔧</div><div><p>kb_config.asp の RELAY_URL / RELAY_KEY / ADMIN_OP_KEY が未設定です。</p></div></div><% End If %>
+    <form method="post" action="kb_bulk.asp">
+      <input type="hidden" name="action" value="login" />
+      <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
+      <div class="field">
+        <label>管理パスワード</label>
+        <input class="control" type="password" name="pw" autofocus required />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">ログイン</button>
+    </form>
+    <p class="muted">この画面では「公式文書」としてマニュアルを一括登録します。担当者以外は操作しないでください。</p>
+  </div>
+</div></div>
 </body></html>
 <%
     Response.End
@@ -111,8 +108,6 @@ End If
 ' ============================================================
 Dim view, status, resp
 view = "form" : status = 0 : resp = ""
-Dim postedCount, addedCount
-postedCount = 0 : addedCount = 0
 
 If method = "POST" And Request.Form("action") = "bulk_register" Then
     If Not CsrfValid(Request.Form("csrf")) Then
@@ -126,9 +121,8 @@ If method = "POST" And Request.Form("action") = "bulk_register" Then
         On Error Goto 0
         If cnt < 0 Then cnt = 0
         If cnt > MAX_BULK_UI Then cnt = MAX_BULK_UI    ' サーバ側でも上限を効かせる
-        postedCount = cnt
 
-        Dim i, sTitle, sBody, sSlug, sCat, sSens, itemsJson
+        Dim i, sTitle, sBody, sSlug, sCat, sSens, itemsJson, addedCount
         itemsJson = "" : addedCount = 0
         For i = 0 To cnt - 1
             sTitle = Trim(Request.Form("title_" & i) & "")
@@ -171,58 +165,25 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
 <html lang="ja"><head><meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>公式マニュアル 一括投入｜管理</title>
-<style>
- :root{--main:#2563eb;--main-dark:#1d4ed8;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;
-   --ng:#ef4444;--ok:#10b981;--warn-bg:#fffbeb;--warn-border:#f59e0b;--warn-text:#92400e;}
- *{box-sizing:border-box;}
- body{font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
-   background:#f3f4f6;color:var(--ink);margin:0;padding:24px;line-height:1.6;}
- .wrap{max-width:1080px;margin:0 auto;}
- .bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
- h1{font-size:1.3rem;margin:0;}
- a{color:var(--main);text-decoration:none;font-weight:700;}
- .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;}
- .sub{color:var(--muted);font-size:.9rem;margin:.2rem 0 0;}
- label{display:block;font-weight:700;margin:14px 0 6px;}
- input[type=text],select{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:.95rem;font-family:inherit;background:#fff;}
- .drop{border:2px dashed #cbd5e1;border-radius:12px;padding:22px;text-align:center;color:var(--muted);background:#f8fafc;cursor:pointer;}
- .drop.hot{border-color:var(--main);background:#eff6ff;color:var(--main-dark);}
- .row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;}
- .row .fld{display:flex;flex-direction:column;}
- .row .fld label{margin:0 0 4px;font-size:.85rem;}
- table{width:100%;border-collapse:collapse;font-size:.88rem;margin-top:8px;}
- th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
- th{background:#f8fafc;color:#475569;font-size:.78rem;white-space:nowrap;}
- td .cellInput{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;font-size:.88rem;font-family:inherit;}
- .mono{font-family:ui-monospace,Consolas,monospace;}
- .small{font-size:.8rem;} .muted{color:var(--muted);}
- .rm{background:#fef2f2;border:1px solid var(--ng);color:#991b1b;border-radius:7px;padding:4px 9px;cursor:pointer;font-size:.8rem;}
- .btns{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
- .primary{padding:11px 22px;font-weight:700;color:#fff;background:var(--main);border:0;border-radius:10px;cursor:pointer;font-size:1rem;}
- .primary:disabled{background:#93c5fd;cursor:not-allowed;}
- .ghost{padding:9px 16px;font-weight:700;color:var(--main);background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;cursor:pointer;}
- .note{background:#f8fafc;border:1px dashed var(--line);border-radius:10px;padding:12px 14px;font-size:.83rem;color:var(--muted);margin-top:16px;}
- .banner{border-radius:12px;padding:14px 16px;margin-bottom:16px;}
- .warn{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);}
- .ok{background:#ecfdf5;border:1px solid var(--ok);color:#065f46;border-radius:10px;padding:14px 16px;}
- .ng{background:#fef2f2;border:1px solid var(--ng);color:#991b1b;border-radius:10px;padding:14px 16px;white-space:pre-wrap;}
- .st-ok{color:#065f46;font-weight:700;} .st-up{color:#1d4ed8;font-weight:700;} .st-ng{color:#991b1b;font-weight:700;}
- #clientWarn{color:var(--warn-text);font-size:.85rem;margin-top:10px;min-height:1.2em;}
-</style></head><body><div class="wrap">
-
-<div class="bar">
-  <h1>📚 公式マニュアル 一括投入</h1>
-  <div>
-    <a href="kb_admin.asp">暗黙知の管理へ</a>　／
-    <a href="kb_ask.asp">質問画面</a>　／
-    <a href="kb_bulk.asp?logout=1">ログアウト</a>
-  </div>
-</div>
+<link rel="stylesheet" href="kb_style.css" />
+</head><body><div class="wrap wide">
+    <header class="topbar">
+      <a class="brand" href="kb_ask.asp"><span class="mark" aria-hidden="true"></span>
+        <span><b>ナレッジ検索AI</b><small>公式マニュアルの一括投入</small></span></a>
+      <nav class="nav" aria-label="画面切替">
+        <a href="kb_ask.asp">質問</a>
+        <a href="kb_register.asp">登録</a>
+        <a href="kb_admin.asp">管理</a>
+      </nav>
+      <a class="mini" href="kb_admin.asp">暗黙知の管理</a>
+      <a class="mini" href="kb_bulk.asp?logout=1">ログアウト</a>
+    </header>
+    <div class="head"><h1>公式マニュアルの一括投入</h1>
+      <p>Markdown／テキストのマニュアルを複数選び、<b>公式文書</b>としてまとめて登録します。ファイルはブラウザ内で読み取り、確認後にHTTPS＋認証で送信します。</p></div>
 
 <% If Not isConfigured Then %>
-  <div class="banner warn">🔧 接続設定が未完了です。<span class="mono">kb_config.asp</span> の
-    <span class="mono">RELAY_URL</span> / <span class="mono">RELAY_KEY</span> /
-    <span class="mono">ADMIN_OP_KEY</span> を設定してください。</div>
+    <div class="banner warn"><div class="bi" aria-hidden="true">🔧</div>
+      <div><h2>接続設定が未完了です</h2><p><span class="mono">kb_config.asp</span> の RELAY_URL / RELAY_KEY / ADMIN_OP_KEY を設定してください。</p></div></div>
 <% End If %>
 
 <%
@@ -232,13 +193,13 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
 If view = "result" Then
     If status = -1 Then
 %>
-  <div class="card"><div class="ng">接続エラー：<%= Server.HTMLEncode(resp) %></div>
-    <p style="margin-top:12px"><a href="kb_bulk.asp">投入画面へ戻る</a></p></div>
+    <div class="banner ng"><div class="bi" aria-hidden="true">!</div><div><p>接続エラー：<%= Server.HTMLEncode(resp) %></p>
+      <p><a class="mini" href="kb_bulk.asp">投入画面へ戻る</a></p></div></div>
 <%
     ElseIf Not opOk Then
 %>
-  <div class="card"><div class="ng">⚠️ <%= Server.HTMLEncode(FriendlyError(status, resp)) %></div>
-    <p style="margin-top:12px"><a href="kb_bulk.asp">投入画面へ戻る</a></p></div>
+    <div class="banner ng"><div class="bi" aria-hidden="true">!</div><div><p><%= Server.HTMLEncode(FriendlyError(status, resp)) %></p>
+      <p><a class="mini" href="kb_bulk.asp">投入画面へ戻る</a></p></div></div>
 <%
     Else
         Dim total2, okc, tsv2, lines2, j2, p2, stt, err2
@@ -246,11 +207,14 @@ If view = "result" Then
         okc = JsonRaw(resp, "ok_count")
         tsv2 = JsonStr(resp, "results_tsv")
 %>
-  <div class="card">
-    <div class="ok">✅ <%= Server.HTMLEncode(okc) %> / <%= Server.HTMLEncode(total2) %> 件を登録・更新しました。
-      数分後（KB同期後）にAIの検索へ反映されます。</div>
-    <table>
-      <tr><th>識別子（slug）</th><th>結果</th></tr>
+    <div class="banner ok"><div class="bi" aria-hidden="true">✓</div>
+      <div><h2><%= Server.HTMLEncode(okc) %> / <%= Server.HTMLEncode(total2) %> 件を登録・更新しました</h2>
+      <p>数分後（KB同期後）にAIの検索へ反映されます。</p></div></div>
+    <div class="card">
+      <div class="admin-head"><div class="count"><b><%= Server.HTMLEncode(okc) %></b> / <%= Server.HTMLEncode(total2) %> 件 反映予定</div></div>
+      <div class="twrap"><table>
+        <thead><tr><th>識別子（slug）</th><th class="tar">結果</th></tr></thead>
+        <tbody>
 <%
         If Len(tsv2) > 0 Then
             lines2 = Split(tsv2, vbLf)
@@ -261,27 +225,28 @@ If view = "result" Then
                         err2 = "" : If UBound(p2) >= 3 Then err2 = p2(3)
                         If p2(1) = "1" Then
                             If UBound(p2) >= 2 And p2(2) = "update" Then
-                                stt = "<span class=""st-up"">🔁 更新</span>"
+                                stt = "<span class=""chip update"">🔁 更新</span>"
                             Else
-                                stt = "<span class=""st-ok"">✅ 新規</span>"
+                                stt = "<span class=""chip create"">✓ 新規</span>"
                             End If
                         Else
-                            stt = "<span class=""st-ng"">⚠️ 失敗（" & Server.HTMLEncode(err2) & "）</span>"
+                            stt = "<span class=""chip fail"">失敗: " & Server.HTMLEncode(err2) & "</span>"
                         End If
 %>
-      <tr><td class="mono small"><%= Server.HTMLEncode(p2(0)) %></td><td><%= stt %></td></tr>
+        <tr><td class="mono"><%= Server.HTMLEncode(p2(0)) %></td><td class="tar"><%= stt %></td></tr>
 <%
                     End If
                 End If
             Next
         End If
 %>
-    </table>
-    <div class="btns">
-      <a class="ghost" href="kb_bulk.asp">続けて投入する</a>
-      <a class="ghost" href="kb_admin.asp">一覧で確認する</a>
+        </tbody></table></div>
+      <div class="foot">※取り込み後（数分）に検索へ反映されます。公式マニュアルは <a class="mini" href="kb_admin.asp">管理画面</a> で編集・削除できます。</div>
     </div>
-  </div>
+    <div class="actions">
+      <a class="btn btn-ghost" href="kb_admin.asp">一覧で確認する</a>
+      <a class="btn btn-primary" href="kb_bulk.asp">続けて投入する</a>
+    </div>
 <%
     End If
 
@@ -290,74 +255,58 @@ If view = "result" Then
 ' ============================================================
 Else
 %>
-  <div class="card">
-    <p class="sub">Markdown / テキストの公式マニュアルを複数選択し、内容を確認してから
-      <strong>「公式文書」として一括登録</strong>します。ファイルはお使いのブラウザ内で読み取られ、
-      確認後に社内ネットワーク経由（HTTPS＋認証）でのみ送信されます。</p>
-
-    <div id="drop" class="drop">
-      📄 ここに <b>.md / .txt</b> ファイルをドラッグ＆ドロップ、または
-      <label style="display:inline;margin:0;color:var(--main);cursor:pointer;text-decoration:underline">
-        クリックして選択<input type="file" id="pickFiles" multiple accept=".md,.markdown,.txt" style="display:none" />
-      </label>
-      <div class="small muted" style="margin-top:6px">最大 <%= MAX_BULK_UI %> 件／1ファイル約500KBまで。UTF-8のファイルを想定しています。</div>
-    </div>
-
-    <div class="row">
-      <div class="fld">
-        <label>既定カテゴリ</label>
-        <input type="text" id="defCategory" value="公式マニュアル" />
+    <div class="card pad">
+      <div class="dropzone" id="drop">
+        <div class="dz-ico" aria-hidden="true">📄</div>
+        <p><b>.md / .txt</b> をここにドラッグ＆ドロップ、または
+          <label class="dz-pick">クリックして選択<input type="file" id="pickFiles" multiple accept=".md,.markdown,.txt" hidden /></label></p>
+        <p class="muted">最大 <%= MAX_BULK_UI %> 件／1ファイル約500KBまで・UTF-8のファイルを想定しています。</p>
       </div>
-      <div class="fld">
-        <label>既定の機微度</label>
-        <select id="defSensitivity">
-          <option value="low" selected>low（一般・誰でも参照可）</option>
-          <option value="mid">mid（社内限定）</option>
-          <option value="high">high（機微・一般質問では参照させない）</option>
-        </select>
+
+      <div class="bulkbar">
+        <div class="field inline"><label>既定カテゴリ</label>
+          <input class="control sm" type="text" id="defCategory" value="公式マニュアル" /></div>
+        <div class="field inline"><label>既定の機微度</label>
+          <select class="control sm" id="defSensitivity">
+            <option value="low" selected>low（一般・誰でも参照可）</option>
+            <option value="mid">mid（社内限定）</option>
+            <option value="high">high（機微・一般質問では参照させない）</option>
+          </select></div>
+        <button type="button" class="mini" id="applyAll">既定を全行へ適用</button>
+        <button type="button" class="mini" id="clearAll">全部クリア</button>
+        <span class="muted" id="pickSummary"></span>
       </div>
-      <button type="button" class="ghost" id="applyAll">既定を全行へ適用</button>
-      <button type="button" class="ghost" id="clearAll">全部クリア</button>
-      <span id="pickSummary" class="small muted"></span>
-    </div>
+      <p class="warntext" id="clientWarn"></p>
 
-    <div id="clientWarn"></div>
+      <form id="bulkForm" method="post" action="kb_bulk.asp">
+        <input type="hidden" name="action" value="bulk_register" />
+        <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
+        <div class="twrap"><table class="bulktable">
+          <thead><tr>
+            <th>ファイル名</th><th>識別子(slug)</th><th>タイトル</th><th>カテゴリ</th>
+            <th>機微度</th><th>文字数</th><th>本文プレビュー</th><th class="tar">除外</th>
+          </tr></thead>
+          <tbody id="previewBody"></tbody>
+        </table></div>
+        <p class="emptyrow" id="emptyMsg">まだファイルが選択されていません。</p>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="submitBtn" disabled>この内容で公式登録する</button>
+        </div>
+      </form>
 
-    <form id="bulkForm" method="post" action="kb_bulk.asp">
-      <input type="hidden" name="action" value="bulk_register" />
-      <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
-
-      <table>
-        <thead>
-          <tr>
-            <th>ファイル名</th><th>識別子（slug）</th><th>タイトル</th><th>カテゴリ</th>
-            <th>機微度</th><th>文字数</th><th>本文プレビュー</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="previewBody"></tbody>
-      </table>
-      <p id="emptyMsg" class="small muted" style="margin-top:10px">まだファイルが選択されていません。</p>
-
-      <div class="btns">
-        <button type="submit" class="primary" id="submitBtn" disabled>この内容で公式登録する</button>
+      <div class="tips">
+        <ul>
+          <li><b>ファイル名＝マニュアルの識別子(slug)</b>。<b>同じファイル名で再投入すると「更新（上書き）」</b>になり、重複が増えません（改訂に便利）。</li>
+          <li>タイトルは本文先頭の見出し（<span class="mono"># …</span>）から自動推定します。表内で修正できます。</li>
+          <li>登録した公式マニュアルは <a href="kb_admin.asp">管理画面</a> で編集・削除できます（種別「公式」で表示）。</li>
+          <li>個人情報やパスワードなど、共有してはいけない情報は載せないでください。</li>
+        </ul>
       </div>
-    </form>
 
-    <div class="note">
-      <strong>ポイント：</strong>
-      <ul style="margin:6px 0 0;padding-left:20px">
-        <li><strong>ファイル名＝マニュアルの識別子（slug）</strong>です。<u>同じファイル名で再投入すると「上書き更新」</u>になり、重複が増えません（改訂に便利）。</li>
-        <li>タイトルは本文先頭の見出し（<span class="mono"># …</span>）から自動推定します。表内で修正できます。</li>
-        <li>登録した公式マニュアルは <a href="kb_admin.asp">管理画面</a> で編集・削除できます（種別「公式」で表示）。</li>
-        <li>個人情報やパスワードなど、共有してはいけない情報は載せないでください。</li>
-      </ul>
+      <noscript>
+        <div class="banner warn"><div class="bi" aria-hidden="true">🔧</div><div><p>この画面はJavaScript（ファイル読み取り）を使います。ブラウザのJavaScriptを有効にしてください（IE11/Edge/Chrome等）。</p></div></div>
+      </noscript>
     </div>
-
-    <noscript>
-      <div class="banner warn" style="margin-top:14px">この画面はJavaScript（ファイル読み取り）を使います。
-        ブラウザのJavaScriptを有効にしてください（IE11/Edge/Chrome等）。</div>
-    </noscript>
-  </div>
 
 <script>
 (function(){
@@ -376,7 +325,7 @@ Else
   var warn = document.getElementById('clientWarn');
 
   function slugify(s){
-    s = (s || '').trim().toLowerCase();
+    s = (s || '').replace(/^﻿/, '').trim().toLowerCase();
     s = s.replace(/[^a-z0-9_-]+/g, '-').replace(/[-_]{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '');
     return s.slice(0, 80);
   }
@@ -397,7 +346,7 @@ Else
     files.forEach(function(f){
       if (rows.length >= MAXN){ msgs.push('最大' + MAXN + '件のため「' + f.name + '」を除外。'); return; }
       if (!/\.(md|markdown|txt)$/i.test(f.name)){ msgs.push('「' + f.name + '」は.md/.txtでないため除外。'); return; }
-      if (f.size > MAXFILEBYTES){ msgs.push('「' + f.name + '」は大きすぎ(' + Math.round(f.size/1024) + 'KB)のため除外。'); return; }
+      if (f.size > MAXFILEBYTES){ msgs.push('「' + f.name + '」は大きすぎ(' + Math.round(f.size / 1024) + 'KB)のため除外。'); return; }
       var reader = new FileReader();
       reader.onload = function(e){
         var text = e.target.result || '';
@@ -418,7 +367,7 @@ Else
 
   function makeInput(val, oninput){
     var el = document.createElement('input');
-    el.type = 'text'; el.className = 'cellInput'; el.value = val;
+    el.type = 'text'; el.className = 'control sm'; el.value = val;
     el.addEventListener('input', function(){ oninput(el.value); });
     return el;
   }
@@ -432,10 +381,10 @@ Else
       totalBytes += bytesOf(r.body);
       var tr = document.createElement('tr');
 
-      var tdFile = document.createElement('td'); tdFile.className = 'mono small';
+      var tdFile = document.createElement('td'); tdFile.className = 'mono';
       tdFile.textContent = r.filename; tr.appendChild(tdFile);
 
-      var tdSlug = document.createElement('td'); tdSlug.className = 'mono small';
+      var tdSlug = document.createElement('td'); tdSlug.className = 'mono';
       tdSlug.textContent = r.slug ? r.slug : '（タイトルで識別）'; tr.appendChild(tdSlug);
 
       var tdTitle = document.createElement('td');
@@ -445,23 +394,23 @@ Else
       tdCat.appendChild(makeInput(r.category, function(v){ r.category = v; })); tr.appendChild(tdCat);
 
       var tdSens = document.createElement('td');
-      var sel = document.createElement('select'); sel.className = 'cellInput';
-      ['low','mid','high'].forEach(function(v){
+      var sel = document.createElement('select'); sel.className = 'control sm';
+      ['low', 'mid', 'high'].forEach(function(v){
         var o = document.createElement('option'); o.value = v; o.textContent = v;
         if (r.sensitivity === v) o.selected = true; sel.appendChild(o);
       });
       sel.addEventListener('change', function(){ r.sensitivity = sel.value; });
       tdSens.appendChild(sel); tr.appendChild(tdSens);
 
-      var tdLen = document.createElement('td'); tdLen.className = 'small';
+      var tdLen = document.createElement('td'); tdLen.className = 'muted';
       tdLen.textContent = String(r.body.length); tr.appendChild(tdLen);
 
-      var tdPrev = document.createElement('td'); tdPrev.className = 'small muted';
+      var tdPrev = document.createElement('td'); tdPrev.className = 'muted';
       tdPrev.textContent = r.body.replace(/\s+/g, ' ').slice(0, 50) + (r.body.length > 50 ? '…' : '');
       tr.appendChild(tdPrev);
 
-      var tdDel = document.createElement('td');
-      var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'rm'; btn.textContent = '除外';
+      var tdDel = document.createElement('td'); tdDel.className = 'tar';
+      var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'mini del'; btn.textContent = '除外';
       btn.addEventListener('click', function(){ rows.splice(idx, 1); render(); });
       tdDel.appendChild(btn); tr.appendChild(tdDel);
 
@@ -470,16 +419,24 @@ Else
     var kb = Math.round(totalBytes / 1024);
     summary.textContent = rows.length + '件 / 本文合計 約' + kb + 'KB';
     submitBtn.disabled = false;
-    if (totalBytes > MAXTOTALBYTES){
-      warn.textContent = '合計サイズが大きめ（約' + kb + 'KB）です。IISの AspMaxRequestEntityAllowed 上限に触れる場合は、件数を分けて投入してください。';
-    }
+    warn.textContent = (totalBytes > MAXTOTALBYTES)
+      ? '合計サイズが大きめ（約' + kb + 'KB）です。IISの AspMaxRequestEntityAllowed 上限に触れる場合は、件数を分けて投入してください。'
+      : '';
   }
 
   pick.addEventListener('change', function(){ addFiles(pick.files); });
-  drop.addEventListener('click', function(e){ if (e.target === pick) return; pick.click(); });
+  drop.addEventListener('click', function(e){
+    var t = e.target;
+    if (t === pick) return;                                        // ネイティブに任せる
+    if (t.tagName === 'LABEL' && String(t.className).indexOf('dz-pick') >= 0) return;
+    pick.click();
+  });
   drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('hot'); });
   drop.addEventListener('dragleave', function(){ drop.classList.remove('hot'); });
-  drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('hot'); if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+  drop.addEventListener('drop', function(e){
+    e.preventDefault(); drop.classList.remove('hot');
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
 
   document.getElementById('applyAll').addEventListener('click', function(){
     var c = defCat.value || '公式マニュアル', s = defSens.value || 'low';
@@ -492,7 +449,7 @@ Else
     if (!rows.length){ ev.preventDefault(); return; }
     var i;
     for (i = 0; i < rows.length; i++){
-      if (!rows[i].title.trim() || !rows[i].body.trim()){
+      if (!rows[i].title.replace(/^\s+|\s+$/g, '') || !rows[i].body.replace(/^\s+|\s+$/g, '')){
         ev.preventDefault();
         warn.textContent = (i + 1) + '件目「' + rows[i].filename + '」はタイトルまたは本文が空です。';
         return;
@@ -500,14 +457,13 @@ Else
     }
     if (!window.confirm(rows.length + '件の公式マニュアルを登録／更新します。よろしいですか？')){ ev.preventDefault(); return; }
 
-    // 前回のキャンセル残りを掃除してから hidden フィールドを注入
     var old = bulkForm.querySelectorAll('.injected'), k;
     for (k = 0; k < old.length; k++) old[k].parentNode.removeChild(old[k]);
     function inj(name, val){
       var el = document.createElement('input'); el.type = 'hidden';
       el.name = name; el.value = val; el.className = 'injected'; bulkForm.appendChild(el);
     }
-    // 本文は複数行。hidden inputだと改行が落ちる恐れがあるため textarea で送る。
+    // 本文は複数行。hidden input だと改行が落ちる恐れがあるため textarea で送る。
     function injArea(name, val){
       var el = document.createElement('textarea');
       el.name = name; el.value = val; el.className = 'injected'; el.style.display = 'none';

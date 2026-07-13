@@ -3,6 +3,7 @@
 Response.CodePage = 65001
 Response.CharSet = "utf-8"
 Response.ContentType = "text/html"
+Response.Buffer = True
 Server.ScriptTimeout = 120
 %>
 <!--#include file="kb_config.asp"-->
@@ -80,6 +81,60 @@ If Request.QueryString("new") = "1" Then
     Response.Redirect "kb_ask.asp"
 End If
 
+' ============================================================
+'  AJAX（ストリーミング風）: 質問を受けてJSONで回答を返す（ページ遷移しない）
+'   JSが有効な画面から fetch で呼ばれる。JS無効時は下の通常POST(PRG)が使われる（保険）。
+'   返すJSON: {ok:true, answerText:"目印を外した本文（タイプ用）", answerHtml:"整形済み安全HTML"}
+' ============================================================
+If UCase(Request.ServerVariables("REQUEST_METHOD")) = "POST" And Request.QueryString("ajax") = "1" Then
+    Response.Clear
+    Response.ContentType = "application/json; charset=utf-8"
+    Response.AddHeader "X-Content-Type-Options", "nosniff"
+    Dim aq, ahist, ajson, astat, aresp, aans, aclean, atext, ahtml
+    ' ★ガード節(CSRF/未入力/未設定)は On Error Resume Next の外で判定する。
+    '   OERN 中だと Response.End の中断が握りつぶされ、チェックを素通りしてしまうため。
+    aq = Trim(Request.Form("question") & "")
+    If Not CsrfValid(Request.Form("csrf")) Then
+        Response.Write "{""ok"":false,""message"":""セッションが切れました。ページを再読み込みしてから、もう一度お試しください。""}"
+        Response.End
+    End If
+    If Len(aq) = 0 Then
+        Response.Write "{""ok"":false,""message"":""質問を入力してください。""}"
+        Response.End
+    End If
+    If Not isConfigured Then
+        Response.Write "{""ok"":false,""message"":""kb_config.asp の RELAY_URL / RELAY_KEY が未設定です。""}"
+        Response.End
+    End If
+    On Error Resume Next    ' ここから先（外部通信・生成）だけ実行時エラーを吸収する
+    ahist = BuildHistory(Session("conv") & "", U, R, 3)
+    ajson = "{""action"":""ask""," & _
+            """question"":""" & JsonEscape(aq) & """," & _
+            """history"":""" & JsonEscape(ahist) & """}"
+    astat = 0 : aresp = ""
+    Call RelayCall(ajson, "", astat, aresp)
+    If astat = 200 And JsonBool(aresp, "ok") Then
+        aans = JsonStr(aresp, "answer")
+        aclean = Replace(Replace(aans, U, ""), R, "")
+        Session("conv") = (Session("conv") & "") & Replace(Replace(aq, U, ""), R, "") & U & aclean & R
+        atext = Replace(Replace(aclean, "[[一般]]", ""), "[[/一般]]", "")
+        ahtml = RenderAnswer(aclean)
+        Response.Write "{""ok"":true,""answerText"":""" & JsonEscape(atext) & """,""answerHtml"":""" & JsonEscape(ahtml) & """}"
+    ElseIf astat = -1 Then
+        Response.Write "{""ok"":false,""message"":""サーバへ接続できませんでした。時間をおいて再度お試しください。""}"
+    Else
+        Response.Write "{""ok"":false,""message"":""" & JsonEscape(FriendlyError(astat, aresp)) & """}"
+    End If
+    If Err.Number <> 0 Then
+        Response.Clear
+        Response.ContentType = "application/json; charset=utf-8"
+        Response.Write "{""ok"":false,""message"":""内部エラーが発生しました。時間をおいて再度お試しください。""}"
+        Err.Clear
+    End If
+    On Error Goto 0
+    Response.End
+End If
+
 Dim state, errText
 state = "" : errText = ""
 
@@ -124,42 +179,32 @@ End If
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ナレッジ検索AI</title>
-  <style>
-    :root{--main:#2563eb;--main-dark:#1d4ed8;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;
-      --ng-bg:#fef2f2;--ng-border:#ef4444;--ng-text:#991b1b;}
-    *{box-sizing:border-box;}
-    body{font-family:-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
-      background:#f3f4f6;color:var(--ink);margin:0;padding:24px;line-height:1.7;}
-    .wrap{max-width:760px;margin:0 auto;}
-    .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px;
-      box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:18px;}
-    h1{font-size:1.4rem;margin:0 0 6px;}
-    .sub{color:var(--muted);margin:0 0 16px;font-size:.92rem;}
-    label{display:block;font-weight:700;margin:8px 0 6px;}
-    textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font-size:1rem;
-      font-family:inherit;min-height:80px;resize:vertical;}
-    textarea:focus{outline:none;border-color:var(--main);box-shadow:0 0 0 3px rgba(37,99,235,.15);}
-    button{margin-top:14px;width:100%;padding:13px;font-size:1.05rem;font-weight:700;color:#fff;
-      background:var(--main);border:0;border-radius:10px;cursor:pointer;}
-    button:hover{background:var(--main-dark);}
-    .qbubble{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 16px;margin:10px 0;}
-    .abubble{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px;margin:10px 0;
-      white-space:pre-wrap;word-break:break-word;}
-    .ng{background:var(--ng-bg);border:1px solid var(--ng-border);color:var(--ng-text);
-      border-radius:12px;padding:14px 16px;white-space:pre-wrap;}
-    .gen{background:#fffbeb;border:1px solid #f59e0b;border-radius:9px;padding:10px 12px;margin:8px 0;}
-    .genlab{font-size:.78rem;font-weight:700;color:#92400e;margin-bottom:4px;}
-    .muted{color:var(--muted);font-size:.82rem;}
-    .links{margin-top:10px;font-size:.9rem;} .links a{color:var(--main);text-decoration:none;font-weight:700;}
-  </style>
+  <link rel="stylesheet" href="kb_style.css" />
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <h1>🤖 ナレッジ検索AI</h1>
-      <p class="sub">社内の「暗黙知」と「公式文書」から回答します。
-        <strong>会話形式</strong>で続けて質問できます（前のやり取りを覚えています）。</p>
+    <header class="topbar">
+      <a class="brand" href="kb_ask.asp"><span class="mark" aria-hidden="true"></span>
+        <span><b>ナレッジ検索AI</b><small>社内の暗黙知＋公式文書</small></span></a>
+      <nav class="nav" aria-label="画面切替">
+        <a href="kb_ask.asp" class="is-active" aria-current="page">質問</a>
+        <a href="kb_register.asp">登録</a>
+        <a href="kb_admin.asp">管理</a>
+      </nav>
+    </header>
 
+    <div class="head">
+      <h1>AIに質問する</h1>
+      <p>社内の「暗黙知」と「公式文書」から回答します。<b>会話形式</b>で続けて質問できます（前のやり取りを覚えています）。</p>
+    </div>
+
+<% If Not isConfigured Then %>
+    <div class="banner warn"><div class="bi" aria-hidden="true">🔧</div>
+      <div><h2>接続設定が未完了です</h2><p><span class="mono">kb_config.asp</span> の RELAY_URL / RELAY_KEY を設定してください。</p></div></div>
+<% End If %>
+
+    <div class="card chat">
+      <div class="thread<% If Len(Session("conv") & "") = 0 Then %> empty<% End If %>" id="thread">
 <%
 ' --- 会話履歴の表示 ---
 Dim conv, turns, ti, parts
@@ -171,30 +216,120 @@ If Len(conv) > 0 Then
             parts = Split(turns(ti), U)
             If UBound(parts) >= 1 Then
 %>
-      <div class="qbubble"><strong>あなた：</strong><br><%= Server.HTMLEncode(parts(0)) %></div>
-      <div class="abubble"><strong>AI：</strong><br><%= RenderAnswer(parts(1)) %></div>
+        <div class="row me"><div class="avatar me" aria-hidden="true">あ</div><div class="bubble"><%= Server.HTMLEncode(parts(0)) %></div></div>
+        <div class="row ai"><div class="avatar ai" aria-hidden="true">AI</div><div class="bubble"><%= RenderAnswer(parts(1)) %></div></div>
 <%
             End If
         End If
     Next
 End If
 %>
-
 <% If state = "error" Then %>
-      <div class="ng"><strong>エラー：</strong><br><%= Server.HTMLEncode(errText) %></div>
+        <div class="row ai"><div class="avatar ai" aria-hidden="true">AI</div><div class="bubble err"><%= Server.HTMLEncode(errText) %></div></div>
 <% End If %>
+      </div>
 
-      <form method="post" action="kb_ask.asp" accept-charset="UTF-8">
-        <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
-        <label>質問<% If Len(conv) > 0 Then %><span class="muted" style="font-weight:400">（続けて質問できます。例：「それは何時から？」）</span><% End If %></label>
-        <textarea name="question" placeholder="例：来客が多い日の駐車場は？" required></textarea>
-        <button type="submit">AIに聞く</button>
-      </form>
-      <p class="links">
-        <a href="kb_ask.asp?new=1">🔄 新しい会話を始める</a>
-        ／ <a href="kb_register.asp">気づき登録フォームへ</a>
-      </p>
+      <div class="composer">
+        <form id="askform" method="post" action="kb_ask.asp" accept-charset="UTF-8">
+          <input type="hidden" name="csrf" id="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
+          <div class="cbox">
+            <textarea id="q" name="question" rows="1" placeholder="質問を入力…（例：来客が多い日の駐車場は？）" required></textarea>
+            <button type="submit" class="send" id="send" aria-label="送信">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l15-7-4 15-4-6-7-2z" fill="currentColor"/></svg>
+            </button>
+          </div>
+          <p class="hint">Enter で送信 ・ Shift+Enter で改行<% If Len(conv) > 0 Then %>　／　続けて質問できます（例：「それは何時から？」）<% End If %></p>
+        </form>
+      </div>
     </div>
+
+    <p class="links">
+      <a href="kb_ask.asp?new=1">🔄 新しい会話を始める</a>
+      ／ <a href="kb_register.asp">気づき登録フォームへ</a>
+    </p>
   </div>
+
+  <script>
+  (function(){
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var form = document.getElementById('askform');
+    var q = document.getElementById('q');
+    var thread = document.getElementById('thread');
+    var sendBtn = document.getElementById('send');
+    var csrf = document.getElementById('csrf').value;
+    var busy = false;
+
+    function scrollDown(){ thread.scrollTop = thread.scrollHeight; }
+    scrollDown();
+
+    function grow(){ q.style.height='auto'; q.style.height=Math.min(q.scrollHeight,150)+'px'; }
+    q.addEventListener('input', grow);
+
+    function addRow(role){
+      var row=document.createElement('div'); row.className='row '+(role==='me'?'me':'ai');
+      var av=document.createElement('div'); av.className='avatar '+(role==='me'?'me':'ai');
+      av.setAttribute('aria-hidden','true'); av.textContent=(role==='me'?'あ':'AI');
+      var b=document.createElement('div'); b.className='bubble';
+      row.appendChild(av); row.appendChild(b);
+      thread.classList.remove('empty'); thread.appendChild(row); scrollDown();
+      return b;
+    }
+
+    // 安全なタイプ表示（textContent のみ使用＝XSSにならない）
+    function typeInto(el, text, done){
+      if(reduce){ el.textContent = text; if(done) done(); return; }
+      var i=0, n=text.length, step=Math.max(1, Math.round(n/220));
+      (function tick(){
+        i=Math.min(n, i+step); el.textContent=text.slice(0,i); scrollDown();
+        if(i<n){ setTimeout(tick, 16); } else { if(done) done(); }
+      })();
+    }
+
+    function ask(){
+      if(busy) return;
+      var text=q.value.trim(); if(!text) return;
+      busy=true; sendBtn.disabled=true;
+
+      var mine=addRow('me'); mine.textContent=text;   // 自分の質問（安全）
+      q.value=''; grow();
+
+      var ai=addRow('ai');
+      ai.innerHTML='<span class="typing"><span class="dots"><i></i><i></i><i></i></span><span id="wtimer">考え中… 0秒</span></span>';
+      var t0=Date.now();
+      var timer=setInterval(function(){
+        var s=Math.floor((Date.now()-t0)/1000);
+        var w=document.getElementById('wtimer'); if(w) w.textContent='考え中… '+s+'秒';
+      }, 500);
+
+      var body='question='+encodeURIComponent(text)+'&csrf='+encodeURIComponent(csrf);
+      fetch('kb_ask.asp?ajax=1', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: body
+      }).then(function(r){ return r.json(); }).then(function(d){
+        clearInterval(timer);
+        if(d && d.ok){
+          ai.innerHTML=''; ai.classList.add('caret');
+          typeInto(ai, d.answerText||'', function(){
+            ai.classList.remove('caret');
+            if(d.answerHtml){ ai.innerHTML=d.answerHtml; } // 出典・注意ボックスをサーバ生成の安全HTMLで整形
+            scrollDown();
+          });
+        } else {
+          ai.className='bubble err'; ai.textContent=(d && d.message) ? d.message : '回答を取得できませんでした。';
+        }
+      }).catch(function(){
+        clearInterval(timer);
+        ai.className='bubble err'; ai.textContent='通信に失敗しました。ネットワークを確認して、もう一度お試しください。';
+      }).then(function(){
+        busy=false; sendBtn.disabled=false; scrollDown();
+      });
+    }
+
+    form.addEventListener('submit', function(e){ e.preventDefault(); ask(); });
+    // 日本語入力(IME)の変換確定のEnterでは送信しない（isComposing / keyCode 229 を除外）
+    q.addEventListener('keydown', function(e){ if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); ask(); } });
+  })();
+  </script>
 </body>
 </html>
