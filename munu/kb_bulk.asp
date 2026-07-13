@@ -122,23 +122,46 @@ If method = "POST" And Request.Form("action") = "bulk_register" Then
         If cnt < 0 Then cnt = 0
         If cnt > MAX_BULK_UI Then cnt = MAX_BULK_UI    ' サーバ側でも上限を効かせる
 
-        Dim i, sTitle, sBody, sSlug, sCat, sSens, itemsJson, addedCount
+        Dim i, sTitle, sBody, sSlug, sCat, sSens, sKind, sExt, sB64, itemJson, itemsJson, addedCount
         itemsJson = "" : addedCount = 0
         For i = 0 To cnt - 1
             sTitle = Trim(Request.Form("title_" & i) & "")
-            sBody  = Request.Form("body_" & i) & ""
             sSlug  = Trim(Request.Form("slug_" & i) & "")
             sCat   = Trim(Request.Form("cat_" & i) & "")
             sSens  = LCase(Trim(Request.Form("sens_" & i) & ""))
             If sSens <> "low" And sSens <> "mid" And sSens <> "high" Then sSens = "low"
-            ' タイトル・本文がそろっている項目だけを送る（空行はスキップ）
-            If Len(sTitle) > 0 And Len(Trim(sBody)) > 0 Then
+            sKind  = LCase(Trim(Request.Form("kind_" & i) & ""))
+            itemJson = ""
+
+            If sKind = "file" Then
+                ' 原本ファイル（PDF/Word/Excel/CSV/HTML）：base64をそのままLambdaへ（Bedrockが解析）
+                sExt = LCase(Trim(Request.Form("ext_" & i) & ""))
+                sB64 = Request.Form("b64_" & i) & ""
+                If Len(sTitle) > 0 And Len(sB64) > 0 And _
+                   InStr("|pdf|doc|docx|csv|xls|xlsx|html|htm|", "|" & sExt & "|") > 0 Then
+                    itemJson = "{""slug"":""" & JsonEscape(sSlug) & """," & _
+                        """title"":""" & JsonEscape(sTitle) & """," & _
+                        """category"":""" & JsonEscape(sCat) & """," & _
+                        """sensitivity"":""" & JsonEscape(sSens) & """," & _
+                        """ext"":""" & JsonEscape(sExt) & """," & _
+                        """content_b64"":""" & JsonEscape(sB64) & """}"
+                End If
+            Else
+                ' テキスト/Markdown：本文をそのままLambdaへ（整形はLambda側）
+                sBody = Request.Form("body_" & i) & ""
+                If Len(sTitle) > 0 And Len(Trim(sBody)) > 0 Then
+                    itemJson = "{""slug"":""" & JsonEscape(sSlug) & """," & _
+                        """title"":""" & JsonEscape(sTitle) & """," & _
+                        """body"":""" & JsonEscape(sBody) & """," & _
+                        """category"":""" & JsonEscape(sCat) & """," & _
+                        """sensitivity"":""" & JsonEscape(sSens) & """}"
+                End If
+            End If
+
+            ' タイトル＋（本文 or ファイル）がそろっている項目だけ送る（空行はスキップ）
+            If Len(itemJson) > 0 Then
                 If addedCount > 0 Then itemsJson = itemsJson & ","
-                itemsJson = itemsJson & "{""slug"":""" & JsonEscape(sSlug) & """," & _
-                    """title"":""" & JsonEscape(sTitle) & """," & _
-                    """body"":""" & JsonEscape(sBody) & """," & _
-                    """category"":""" & JsonEscape(sCat) & """," & _
-                    """sensitivity"":""" & JsonEscape(sSens) & """}"
+                itemsJson = itemsJson & itemJson
                 addedCount = addedCount + 1
             End If
         Next
@@ -179,7 +202,7 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
       <a class="mini" href="kb_bulk.asp?logout=1">ログアウト</a>
     </header>
     <div class="head"><h1>公式マニュアルの一括投入</h1>
-      <p>Markdown／テキストのマニュアルを複数選び、<b>公式文書</b>としてまとめて登録します。ファイルはブラウザ内で読み取り、確認後にHTTPS＋認証で送信します。</p></div>
+      <p>Markdown・テキスト・PDF・Word・Excel などのマニュアルを複数選び、<b>公式文書</b>としてまとめて登録します。ファイルはブラウザ内で読み取り、確認後にHTTPS＋認証で送信します。</p></div>
 
 <% If Not isConfigured Then %>
     <div class="banner warn"><div class="bi" aria-hidden="true">🔧</div>
@@ -202,7 +225,7 @@ If view = "result" Then
       <p><a class="mini" href="kb_bulk.asp">投入画面へ戻る</a></p></div></div>
 <%
     Else
-        Dim total2, okc, tsv2, lines2, j2, p2, stt, err2
+        Dim total2, okc, tsv2, lines2, j2, p2, stt, err2, knd2
         total2 = JsonRaw(resp, "total")
         okc = JsonRaw(resp, "ok_count")
         tsv2 = JsonStr(resp, "results_tsv")
@@ -213,7 +236,7 @@ If view = "result" Then
     <div class="card">
       <div class="admin-head"><div class="count"><b><%= Server.HTMLEncode(okc) %></b> / <%= Server.HTMLEncode(total2) %> 件 反映予定</div></div>
       <div class="twrap"><table>
-        <thead><tr><th>識別子（slug）</th><th class="tar">結果</th></tr></thead>
+        <thead><tr><th>識別子（slug）</th><th>形式</th><th class="tar">結果</th></tr></thead>
         <tbody>
 <%
         If Len(tsv2) > 0 Then
@@ -223,6 +246,7 @@ If view = "result" Then
                     p2 = Split(lines2(j2), vbTab)
                     If UBound(p2) >= 1 Then
                         err2 = "" : If UBound(p2) >= 3 Then err2 = p2(3)
+                        knd2 = "" : If UBound(p2) >= 4 Then knd2 = p2(4)
                         If p2(1) = "1" Then
                             If UBound(p2) >= 2 And p2(2) = "update" Then
                                 stt = "<span class=""chip update"">🔁 更新</span>"
@@ -233,7 +257,7 @@ If view = "result" Then
                             stt = "<span class=""chip fail"">失敗: " & Server.HTMLEncode(err2) & "</span>"
                         End If
 %>
-        <tr><td class="mono"><%= Server.HTMLEncode(p2(0)) %></td><td class="tar"><%= stt %></td></tr>
+        <tr><td class="mono"><%= Server.HTMLEncode(p2(0)) %></td><td class="mono"><%= Server.HTMLEncode(UCase(knd2)) %></td><td class="tar"><%= stt %></td></tr>
 <%
                     End If
                 End If
@@ -258,9 +282,9 @@ Else
     <div class="card pad">
       <div class="dropzone" id="drop">
         <div class="dz-ico" aria-hidden="true">📄</div>
-        <p><b>.md / .txt</b> をここにドラッグ＆ドロップ、または
-          <label class="dz-pick">クリックして選択<input type="file" id="pickFiles" multiple accept=".md,.markdown,.txt" hidden /></label></p>
-        <p class="muted">最大 <%= MAX_BULK_UI %> 件／1ファイル約500KBまで・UTF-8のファイルを想定しています。</p>
+        <p><b>.md / .txt / PDF / Word / Excel / CSV / HTML</b> をここにドラッグ＆ドロップ、または
+          <label class="dz-pick">クリックして選択<input type="file" id="pickFiles" multiple accept=".md,.markdown,.txt,.pdf,.doc,.docx,.csv,.xls,.xlsx,.html,.htm" hidden /></label></p>
+        <p class="muted">最大 <%= MAX_BULK_UI %> 件／テキストは約500KB・PDF等の原本は約3.5MBまで（合計は控えめに）。テキストはUTF-8想定。</p>
       </div>
 
       <div class="bulkbar">
@@ -296,8 +320,10 @@ Else
 
       <div class="tips">
         <ul>
+          <li><b>対応形式：</b>Markdown/テキスト（.md/.txt）に加え、<b>PDF・Word（.docx）・Excel（.xlsx）・CSV・HTML</b>の原本も投入できます（本文はBedrockが解析）。</li>
           <li><b>ファイル名＝マニュアルの識別子(slug)</b>。<b>同じファイル名で再投入すると「更新（上書き）」</b>になり、重複が増えません（改訂に便利）。</li>
-          <li>タイトルは本文先頭の見出し（<span class="mono"># …</span>）から自動推定します。表内で修正できます。</li>
+          <li>タイトルは、テキストは先頭見出し（<span class="mono"># …</span>）、原本ファイルはファイル名から自動セット。表内で修正できます。</li>
+          <li>大きいPDF等は<b>1〜数件ずつ</b>に。<b>スキャン画像だけのPDF</b>はBedrockの「高度な解析（OCR）」を有効化しないと本文が取れません。原本ファイルの投入にはIISの <span class="mono">AspMaxRequestEntityAllowed</span> の引き上げが必要です。</li>
           <li>登録した公式マニュアルは <a href="kb_admin.asp">管理画面</a> で編集・削除できます（種別「公式」で表示）。</li>
           <li>個人情報やパスワードなど、共有してはいけない情報は載せないでください。</li>
         </ul>
@@ -311,7 +337,9 @@ Else
 <script>
 (function(){
   "use strict";
-  var MAXN = <%= MAX_BULK_UI %>, MAXFILEBYTES = 512000, MAXTOTALBYTES = 1500000;
+  var MAXN = <%= MAX_BULK_UI %>, MAXTEXTBYTES = 512000, MAXBINBYTES = 3670016, MAXTOTALBYTES = 4718592;
+  var TEXT_EXTS = { md:1, markdown:1, txt:1 };
+  var FILE_EXTS = { pdf:1, doc:1, docx:1, csv:1, xls:1, xlsx:1, html:1, htm:1 };
   var rows = [];
   var pick = document.getElementById('pickFiles');
   var drop = document.getElementById('drop');
@@ -330,6 +358,7 @@ Else
     return s.slice(0, 80);
   }
   function stripExt(name){ var i = name.lastIndexOf('.'); return i > 0 ? name.slice(0, i) : name; }
+  function extOf(name){ var i = name.lastIndexOf('.'); return i >= 0 ? name.slice(i + 1).toLowerCase() : ''; }
   function deriveTitle(text, fallback){
     var lines = (text || '').split(/\r?\n/), i, m;
     for (i = 0; i < lines.length; i++){
@@ -340,26 +369,45 @@ Else
     return fallback;
   }
   function bytesOf(str){ try { return new Blob([str]).size; } catch(e){ return str.length; } }
+  function rowBytes(r){ return r.kind === 'file' ? r.sizeBytes : bytesOf(r.body); }
 
   function addFiles(fileList){
     var files = Array.prototype.slice.call(fileList), msgs = [];
     files.forEach(function(f){
       if (rows.length >= MAXN){ msgs.push('最大' + MAXN + '件のため「' + f.name + '」を除外。'); return; }
-      if (!/\.(md|markdown|txt)$/i.test(f.name)){ msgs.push('「' + f.name + '」は.md/.txtでないため除外。'); return; }
-      if (f.size > MAXFILEBYTES){ msgs.push('「' + f.name + '」は大きすぎ(' + Math.round(f.size / 1024) + 'KB)のため除外。'); return; }
-      var reader = new FileReader();
-      reader.onload = function(e){
-        var text = e.target.result || '';
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
-        var stem = stripExt(f.name);
-        rows.push({
-          filename: f.name, slug: slugify(stem), title: deriveTitle(text, stem),
-          body: text, category: (defCat.value || '公式マニュアル'), sensitivity: (defSens.value || 'low')
-        });
-        render();
-      };
-      reader.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
-      reader.readAsText(f, 'UTF-8');
+      var ext = extOf(f.name), stem = stripExt(f.name);
+      if (TEXT_EXTS[ext]){
+        // テキスト/Markdown：UTF-8として読み、見出しからタイトルを推定
+        if (f.size > MAXTEXTBYTES){ msgs.push('「' + f.name + '」はテキストとして大きすぎ(' + Math.round(f.size / 1024) + 'KB)のため除外。'); return; }
+        var tr = new FileReader();
+        tr.onload = function(e){
+          var text = e.target.result || '';
+          if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
+          rows.push({ kind:'text', filename:f.name, slug:slugify(stem), title:deriveTitle(text, stem),
+            body:text, sizeBytes:f.size, ext:ext,
+            category:(defCat.value || '公式マニュアル'), sensitivity:(defSens.value || 'low') });
+          render();
+        };
+        tr.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
+        tr.readAsText(f, 'UTF-8');
+      } else if (FILE_EXTS[ext]){
+        // 原本ファイル（PDF/Word/Excel/CSV/HTML）：base64にして送る（Bedrockが解析）
+        if (f.size > MAXBINBYTES){ msgs.push('「' + f.name + '」は大きすぎ(' + (Math.round(f.size / 1024 / 1024 * 10) / 10) + 'MB)のため除外。'); return; }
+        var br = new FileReader();
+        br.onload = function(e){
+          var s = String(e.target.result || ''), c = s.indexOf('base64,');
+          var b64 = c >= 0 ? s.slice(c + 7) : '';
+          if (!b64){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; return; }
+          rows.push({ kind:'file', filename:f.name, slug:slugify(stem), title:stem,
+            b64:b64, ext:ext, sizeBytes:f.size,
+            category:(defCat.value || '公式マニュアル'), sensitivity:(defSens.value || 'low') });
+          render();
+        };
+        br.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
+        br.readAsDataURL(f);
+      } else {
+        msgs.push('「' + f.name + '」は未対応の形式のため除外。');
+      }
     });
     warn.textContent = msgs.join(' ');
     pick.value = '';
@@ -378,7 +426,7 @@ Else
     emptyMsg.style.display = 'none';
     var totalBytes = 0;
     rows.forEach(function(r, idx){
-      totalBytes += bytesOf(r.body);
+      totalBytes += rowBytes(r);
       var tr = document.createElement('tr');
 
       var tdFile = document.createElement('td'); tdFile.className = 'mono';
@@ -403,10 +451,15 @@ Else
       tdSens.appendChild(sel); tr.appendChild(tdSens);
 
       var tdLen = document.createElement('td'); tdLen.className = 'muted';
-      tdLen.textContent = String(r.body.length); tr.appendChild(tdLen);
+      tdLen.textContent = (r.kind === 'file') ? (Math.round(r.sizeBytes / 1024) + 'KB') : String(r.body.length);
+      tr.appendChild(tdLen);
 
       var tdPrev = document.createElement('td'); tdPrev.className = 'muted';
-      tdPrev.textContent = r.body.replace(/\s+/g, ' ').slice(0, 50) + (r.body.length > 50 ? '…' : '');
+      if (r.kind === 'file'){
+        tdPrev.textContent = '🗎 ' + r.ext.toUpperCase() + '（原本をBedrockが解析）';
+      } else {
+        tdPrev.textContent = r.body.replace(/\s+/g, ' ').slice(0, 50) + (r.body.length > 50 ? '…' : '');
+      }
       tr.appendChild(tdPrev);
 
       var tdDel = document.createElement('td'); tdDel.className = 'tar';
@@ -417,10 +470,10 @@ Else
       tbody.appendChild(tr);
     });
     var kb = Math.round(totalBytes / 1024);
-    summary.textContent = rows.length + '件 / 本文合計 約' + kb + 'KB';
+    summary.textContent = rows.length + '件 / 合計 約' + kb + 'KB';
     submitBtn.disabled = false;
-    warn.textContent = (totalBytes > MAXTOTALBYTES)
-      ? '合計サイズが大きめ（約' + kb + 'KB）です。IISの AspMaxRequestEntityAllowed 上限に触れる場合は、件数を分けて投入してください。'
+    warn.textContent = (totalBytes > MAXTOTALBYTES - 200000)
+      ? '合計サイズが大きめ（約' + kb + 'KB）です。送信できない場合は件数を分けてください（IISの AspMaxRequestEntityAllowed の調整も必要）。'
       : '';
   }
 
@@ -447,13 +500,21 @@ Else
 
   bulkForm.addEventListener('submit', function(ev){
     if (!rows.length){ ev.preventDefault(); return; }
-    var i;
+    var i, r, total = 0;
     for (i = 0; i < rows.length; i++){
-      if (!rows[i].title.replace(/^\s+|\s+$/g, '') || !rows[i].body.replace(/^\s+|\s+$/g, '')){
-        ev.preventDefault();
-        warn.textContent = (i + 1) + '件目「' + rows[i].filename + '」はタイトルまたは本文が空です。';
-        return;
+      r = rows[i];
+      if (!r.title.replace(/^\s+|\s+$/g, '')){
+        ev.preventDefault(); warn.textContent = (i + 1) + '件目「' + r.filename + '」はタイトルが空です。'; return;
       }
+      if (r.kind === 'text' && !r.body.replace(/^\s+|\s+$/g, '')){
+        ev.preventDefault(); warn.textContent = (i + 1) + '件目「' + r.filename + '」は本文が空です。'; return;
+      }
+      total += rowBytes(r);
+    }
+    if (total > MAXTOTALBYTES){
+      ev.preventDefault();
+      warn.textContent = '合計が大きすぎます（約' + Math.round(total / 1024) + 'KB）。件数を分けて投入してください。';
+      return;
     }
     if (!window.confirm(rows.length + '件の公式マニュアルを登録／更新します。よろしいですか？')){ ev.preventDefault(); return; }
 
@@ -471,11 +532,18 @@ Else
     }
     inj('count', String(rows.length));
     for (i = 0; i < rows.length; i++){
-      inj('slug_' + i, rows[i].slug);           // 空でも可（サーバがタイトルで代替）
-      inj('title_' + i, rows[i].title);
-      inj('cat_' + i, rows[i].category);
-      inj('sens_' + i, rows[i].sensitivity);
-      injArea('body_' + i, rows[i].body);
+      r = rows[i];
+      inj('kind_' + i, r.kind);
+      inj('slug_' + i, r.slug);                 // 空でも可（サーバがタイトルで代替）
+      inj('title_' + i, r.title);
+      inj('cat_' + i, r.category);
+      inj('sens_' + i, r.sensitivity);
+      if (r.kind === 'file'){
+        inj('ext_' + i, r.ext);
+        inj('b64_' + i, r.b64);                 // base64は1行・改行なしなので hidden input で可
+      } else {
+        injArea('body_' + i, r.body);
+      }
     }
     submitBtn.disabled = true; submitBtn.textContent = '送信中…';
   });

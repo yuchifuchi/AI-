@@ -38,6 +38,7 @@ import re
 import json
 import hmac
 import uuid
+import base64
 import hashlib
 import ipaddress
 import datetime
@@ -60,6 +61,25 @@ ADMIN_OP_KEY = os.environ.get("ADMIN_OP_KEY", "")
 ALLOWED_IPS = [c.strip() for c in os.environ.get("ALLOWED_IPS", "").split(",") if c.strip()]
 # 公式マニュアルの一括投入(register_bulk)で1回に受け付ける最大件数（多重POSTでの過負荷を防ぐ）
 MAX_BULK_ITEMS = int(os.environ.get("MAX_BULK_ITEMS", "50"))
+# 原本ファイル（PDF/Word/Excel等）1件あたりの最大バイト数（デコード後）。
+# Function URL の1リクエスト上限は約6MBのため、既定は5MB。Bedrock KBの上限は50MB。
+MAX_FILE_BYTES = int(os.environ.get("MAX_FILE_BYTES", str(5 * 1024 * 1024)))
+
+# Bedrock Knowledge Base がS3上でネイティブ解析できる「原本ファイル」の拡張子。
+# これらは整形せず生ファイルのまま保存し、取り込み時にBedrockが本文を抽出する。
+# （.txt/.md/.markdown は従来どおり整形テキストとして保存するため、ここには含めない）
+_FILE_EXTS = {"pdf", "doc", "docx", "csv", "xls", "xlsx", "html", "htm"}
+_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "doc": "application/msword",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xls": "application/vnd.ms-excel",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv; charset=utf-8",
+    "html": "text/html; charset=utf-8",
+    "htm": "text/html; charset=utf-8",
+    "txt": "text/plain; charset=utf-8",
+}
 
 # 機微度の順序（小さいほど公開寄り）
 _SENS_ORDER = {"low": 0, "mid": 1, "high": 2}
@@ -150,6 +170,40 @@ def _official_doc_id(slug):
     return hashlib.md5(("official:" + (slug or "")).encode("utf-8")).hexdigest()
 
 
+def _content_type(ext):
+    return _CONTENT_TYPES.get(ext, "application/octet-stream")
+
+
+def _official_write(doc_id, ext, body_bytes, content_type, meta):
+    """公式マニュアル1件を決定的キー {doc_id}.{ext} で書き込み、
+    同じ doc_id の『旧版（拡張子違い含む）』を後から掃除する（スラッグ上書き）。
+    先に新版を書いてから旧版だけ消すので、書き込み失敗時に既存データを失わない。
+    返り値: existed(bool) 既存を更新したか（表示の create/update 判定用）。"""
+    prefix = KB_PREFIX + "/" + doc_id + "."
+    old = []
+    try:
+        r = s3.list_objects_v2(Bucket=KB_BUCKET, Prefix=prefix)
+        old = [o["Key"] for o in r.get("Contents", [])]
+    except Exception as e:
+        print("bulk list error:", repr(e))
+
+    base = KB_PREFIX + "/" + doc_id + "." + ext
+    s3.put_object(Bucket=KB_BUCKET, Key=base, Body=body_bytes, ContentType=content_type)
+    s3.put_object(Bucket=KB_BUCKET, Key=base + ".metadata.json",
+                  Body=json.dumps(meta, ensure_ascii=False).encode("utf-8"),
+                  ContentType="application/json")
+
+    # 今書いた2キー以外（＝旧拡張子の本文やその metadata）を削除して重複を残さない
+    keep = {base, base + ".metadata.json"}
+    stale = [{"Key": k} for k in old if k not in keep]
+    if stale:
+        try:
+            s3.delete_objects(Bucket=KB_BUCKET, Delete={"Objects": stale})
+        except Exception as e:
+            print("bulk stale-cleanup error:", repr(e))
+    return len(old) > 0
+
+
 def _san(s):
     return (s or "").replace("\t", " ").replace("\r", " ").replace("\n", " ").strip()
 
@@ -189,7 +243,6 @@ def _get_headers(event):
 
 
 def _get_body(event):
-    import base64
     raw = event.get("body") or ""
     if event.get("isBase64Encoded"):
         raw = base64.b64decode(raw).decode("utf-8", "replace")
@@ -390,7 +443,6 @@ def do_register_bulk(body, headers, ctx):
 
         raw_slug = (it.get("slug") or "").strip()
         title = _strip_markers((it.get("title") or "").strip())
-        text_body = _strip_markers((it.get("body") or "").strip())
         author = (it.get("author") or "").strip() or "公式"
         category = (it.get("category") or "").strip() or "公式マニュアル"
         sensitivity = (it.get("sensitivity") or "low").strip().lower()
@@ -407,34 +459,50 @@ def do_register_bulk(body, headers, ctx):
                 results.append({"slug": raw_slug, "ok": False, "error": "slug_required"})
                 continue
 
-        if not title or not text_body:
-            results.append({"slug": slug, "ok": False, "error": "title_body_required"})
+        if not title:
+            results.append({"slug": slug, "ok": False, "error": "title_required"})
             continue
 
         doc_id = _official_doc_id(slug)
-        base = KB_PREFIX + "/" + doc_id + ".txt"
-
-        # 既存なら『更新』、無ければ『新規』（表示用。処理自体はどちらも put で上書き）
-        mode = "create"
-        try:
-            s3.head_object(Bucket=KB_BUCKET, Key=base)
-            mode = "update"
-        except ClientError:
-            mode = "create"
-
-        text = _build_doc_text("公式文書（正式・確定情報）", title, author, today, category, text_body)
         meta = _build_meta("official", title, author, category, today, sensitivity, slug=slug)
+        content_b64 = it.get("content_b64")
+
         try:
-            s3.put_object(Bucket=KB_BUCKET, Key=base,
-                          Body=text.encode("utf-8"),
-                          ContentType="text/plain; charset=utf-8")
-            s3.put_object(Bucket=KB_BUCKET, Key=base + ".metadata.json",
-                          Body=json.dumps(meta, ensure_ascii=False).encode("utf-8"),
-                          ContentType="application/json")
-            wrote_any = True
-            results.append({"slug": slug, "id": doc_id, "ok": True, "mode": mode})
+            if content_b64:
+                # ---- 原本ファイル（PDF/Word/Excel/CSV/HTML）：生のまま保存し Bedrock がネイティブ解析 ----
+                ext = (it.get("ext") or "").strip().lower().lstrip(".")
+                if ext not in _FILE_EXTS:
+                    results.append({"slug": slug, "ok": False, "error": "unsupported_ext"})
+                    continue
+                try:
+                    raw = base64.b64decode(content_b64)
+                except Exception:
+                    results.append({"slug": slug, "ok": False, "error": "bad_base64"})
+                    continue
+                if not raw:
+                    results.append({"slug": slug, "ok": False, "error": "empty_file"})
+                    continue
+                if len(raw) > MAX_FILE_BYTES:
+                    results.append({"slug": slug, "ok": False, "error": "file_too_large"})
+                    continue
+                existed = _official_write(doc_id, ext, raw, _content_type(ext), meta)
+                wrote_any = True
+                results.append({"slug": slug, "id": doc_id, "ok": True,
+                                "mode": "update" if existed else "create", "kind": ext})
+            else:
+                # ---- テキスト/Markdown：ヘッダを付けて整形し .txt 保存（従来どおり）----
+                text_body = _strip_markers((it.get("body") or "").strip())
+                if not text_body:
+                    results.append({"slug": slug, "ok": False, "error": "title_body_required"})
+                    continue
+                text = _build_doc_text("公式文書（正式・確定情報）", title, author, today, category, text_body)
+                existed = _official_write(doc_id, "txt",
+                                          text.encode("utf-8"), _content_type("txt"), meta)
+                wrote_any = True
+                results.append({"slug": slug, "id": doc_id, "ok": True,
+                                "mode": "update" if existed else "create", "kind": "txt"})
         except Exception as e:
-            print("bulk put error:", repr(e))
+            print("bulk write error:", repr(e))
             results.append({"slug": slug, "id": doc_id, "ok": False, "error": "write_failed"})
 
     # 取り込みは全書き込みの後に1回だけ（件数分の無駄打ち・レース回避）
@@ -445,10 +513,10 @@ def do_register_bulk(body, headers, ctx):
     _audit("register_bulk", ctx, total=len(items), ok=ok_n)
 
     # classic ASP が配列を解析せず描画できるよう TSV も同梱：
-    #   1行 = slug \t ok(1/0) \t mode(create/update) \t error
+    #   1行 = slug \t ok(1/0) \t mode(create/update) \t error \t kind(txt/pdf/docx/...)
     tsv = "\n".join("\t".join([
         _san(r.get("slug", "")), ("1" if r.get("ok") else "0"),
-        _san(r.get("mode", "")), _san(r.get("error", "")),
+        _san(r.get("mode", "")), _san(r.get("error", "")), _san(r.get("kind", "")),
     ]) for r in results)
 
     return _resp(200, {"ok": True, "op": "register_bulk",

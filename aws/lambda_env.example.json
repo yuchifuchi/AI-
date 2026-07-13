@@ -18,5 +18,8 @@
   "MAX_SENSITIVITY": "mid",
 
   "MAX_BULK_ITEMS": "50",
-  "_note_MAX_BULK_ITEMS": "公式マニュアル一括投入(action=register_bulk)で1回に受け付ける最大件数。munu側UI(kb_bulk.asp)は15件までで送るため、通常はこの既定のままでよい。"
+  "_note_MAX_BULK_ITEMS": "公式マニュアル一括投入(action=register_bulk)で1回に受け付ける最大件数。munu側UI(kb_bulk.asp)は15件までで送るため、通常はこの既定のままでよい。",
+
+  "MAX_FILE_BYTES": "5242880",
+  "_note_MAX_FILE_BYTES": "公式マニュアルの原本ファイル(PDF/Word/Excel/CSV/HTML)1件あたりの最大バイト数（base64デコード後）。既定5MB。Function URLの1リクエスト上限は約6MB、Bedrock KBのファイル上限は50MB。"
 }

@@ -101,6 +101,18 @@ munu（IIS/classic ASPサーバ）に設定して動かします。
    - `ADMIN_PASSWORD` でログイン → `.md`/`.txt` を数件選び、プレビュー表が出れば読み取りOK。
    - 「この内容で公式登録する」→ **「✅ N/N 件を登録・更新しました」** が出れば、`register_bulk`（ADMIN_OP_KEY）まで通っています。
    - 同じファイル名で再投入すると **🔁 更新**（重複せず上書き）になることも確認できます。
+   - **PDF・Word(.docx)・Excel(.xlsx)・CSV・HTML の原本**もそのまま投入でき、Bedrockが本文を解析します。
+     ⚠️ 原本ファイル（バイナリ）は送信サイズが大きいため、**IISのASP本文上限を引き上げ**ておきます。
+     tacit2 の `web.config` に次を追加（既定は約200KBで、PDF等では不足します）：
+
+     ```xml
+     <configuration>
+       <system.webServer>
+         <asp><limits maxRequestEntityAllowed="8388608" /></asp>
+       </system.webServer>
+     </configuration>
+     ```
+     （8388608＝8MB。大きいPDFは1〜数件ずつに分けて投入してください。スキャン画像だけのPDFはBedrockの高度な解析(OCR)を有効化しないと本文が取れません。）
 
 ✅ こうなれば成功：登録・質問・管理・公式一括投入の4画面がすべて動く。
 

@@ -55,7 +55,7 @@
 | action | 主なフィールド | 用途 |
 |---|---|---|
 | `register` | type, title, body, author, category, sensitivity | 気づき登録 |
-| `register_bulk` | items[]（slug, title, body, category, sensitivity） | **公式マニュアルの一括投入（管理者専用）**。`X-Admin-Key` 必須。slugから決定的doc_id（md5→32hex）で**上書き更新**、取り込みは最後に1回。件別結果を `results`／`results_tsv` で返す |
+| `register_bulk` | items[]（slug, title, category, sensitivity ＋ 本文は body か content_b64+ext） | **公式マニュアルの一括投入（管理者専用）**。`X-Admin-Key` 必須。テキストは body、**PDF/Word/Excel/CSV/HTML は content_b64(+ext)** で受け、原本のままS3へ保存して**Bedrockがネイティブ解析**。slugから決定的doc_id（md5→32hex）で**上書き更新**（拡張子変更時は旧版を掃除）、取り込みは最後に1回。結果は `results`／`results_tsv`（slug/ok/mode/error/kind）で返す |
 | `ask` | question, history | AI質問（historyは直近3ターン） |
 | `admin`（`op=list`） | op | 一覧（応答の rows_tsv に `type` 列を含む） |
 | `admin`（`op=get`） | op, id | 1件取得（編集フォーム用） |

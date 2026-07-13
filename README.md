@@ -23,7 +23,7 @@ munu/                           … munu(IIS/classic ASP) に置くファイル
   kb_register.asp               … 気づき登録フォーム
   kb_ask.asp                    … AI質問・会話画面
   kb_admin.asp                  … 管理画面（一覧・編集・削除。パスワード＋サーバ側認可）
-  kb_bulk.asp                   … 公式マニュアルの一括投入（管理者用・ブラウザ読取→上書き対応）
+  kb_bulk.asp                   … 公式マニュアルの一括投入（管理者用・.md/.txt＋PDF/Word/Excel等・ブラウザ読取→上書き）
   kb_style.css                  … 全画面共通デザイン（見た目はここに集約。ASPにCSSを書かない）
 
 aws/                            … AWS 側に入れるもの
