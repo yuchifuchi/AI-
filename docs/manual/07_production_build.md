@@ -48,18 +48,24 @@
 
 作る順番：**① モデル解禁 → ② KMS鍵 → ③ S3バケット → ④ ナレッジベース → ⑤ Lambda → ⑥ 権限 → ⑦ 設定 → ⑧ 環境変数 → ⑨ 窓口URL → ⑩ テスト → ⑪ 監査 → ⑫ IP制限**。
 
-## ステップ①. Bedrock のモデルを解禁する（Model access）
-AI（回答用）と埋め込み（検索用）の2種類を有効化します。
+## ステップ①. Bedrock のモデルを使える状態にする（旧「モデルアクセス」）
 
-1. 上部の検索窓に **`Bedrock`** → Amazon Bedrock を開く。右上リージョンが**東京**か確認。
-2. 左メニュー下の **「Model access（モデルアクセス）」** をクリック → **「Enable specific models / モデルを有効化」**。
-3. 次の2つに**チェック**して有効化を申請：
-   - **Anthropic – Claude（回答用。Haiku 系）**
-   - **Amazon – Titan Text Embeddings V2（埋め込み用）**
-4. 申請 → 数分待つと状態が **「Access granted（アクセスが付与されました）」** になる。
+> 📝 **2025年以降、AWSは「モデルアクセス」ページを廃止**しました。サーバーレスの基盤モデルは
+> **初回に呼び出した時点で自動有効化**されます（画面に "Model access page has been retired" と出れば正常。
+> 昔の「モデルを有効化」操作は不要）。ただし **Anthropic（Claude）は初回だけ利用目的の申請**が要る場合があります。
 
-✅ こうなれば成功：上記2モデルが「Access granted」。
-> ⚠️ Anthropic系は利用目的の簡単な入力を求められることがあります。案内どおり入力すればOK。
+上部の検索窓に **`Bedrock`** → Amazon Bedrock を開き（右上リージョンが**東京**か確認）、次の2つ：
+
+1. **埋め込みモデル（Titan Text Embeddings V2・検索用）**：Amazon製で**自動有効**。**何もしなくてOK**。
+2. **回答モデル（Anthropic Claude・Haiku系）**：初回だけ「ユースケース申請」が要ることがあります。
+   - 左メニュー **「モデルカタログ（Model catalog）」** → **Claude Haiku** を選ぶ →
+     求められたら**会社名・用途などの短いフォームを送信**（数分でアカウント全体に有効化）。
+   - 確認：左 **「テスト → Playground」** で **Claude Haiku** を選び「テスト」と送って**返事が来ればOK**。
+
+✅ こうなれば成功：Playgroundで Claude Haiku が応答する（＝回答モデルが使える）。埋め込みは自動で使える。
+> ❓ 後で質問が `internal_error` になり、CloudWatchに `AccessDenied`（モデル系）と出る場合は Anthropic の申請が未完了。
+> 上の Playground で一度 Claude を呼び、フォームを完了させてください。
+> ※ 本番を別アカウントで作る場合も、Anthropic の初回申請は**各アカウントで1回ずつ**必要です。
 
 ## ステップ②. KMS の暗号鍵を作る（保存を暗号化する鍵）
 1. 検索窓に **`KMS`** → Key Management Service。左「カスタマー管理型のキー」→ **［キーの作成］**。
