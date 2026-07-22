@@ -48,6 +48,24 @@
 
 作る順番：**① モデル解禁 → ② KMS鍵 → ③ S3バケット → ④ ナレッジベース → ⑤ Lambda → ⑥ 権限 → ⑦ 設定 → ⑧ 環境変数 → ⑨ 窓口URL → ⑩ テスト → ⑪ 監査 → ⑫ IP制限**。
 
+> 🗾 **リージョンについて（最初に決める・重要）**
+> この手順の例は **東京(ap-northeast-1)** 表記です。**全リソースを必ず同じ1リージョンに**作ってください（右上のリージョンを固定）。
+> **大阪(ap-northeast-3)で作る場合**は、以下を読み替えます。
+>
+> | 対象 | 東京(例) | 大阪で作るなら |
+> |---|---|---|
+> | すべてのARNのリージョン部 | `ap-northeast-1` | **`ap-northeast-3`** |
+> | Function URL のホスト（⑨） | `*.lambda-url.ap-northeast-1.on.aws` | **`*.lambda-url.ap-northeast-3.on.aws`** |
+> | `MODEL_ARN`（⑧） | 手打ちせず、左メニュー**「推論プロファイル」→ jp. Claude Haiku**のARNをコピーが確実 | 同左（大阪の正しいARNが得られる） |
+> | IAM（⑥） | inference-profile と logs のリージョンを合わせる。**foundation-model の2行（ap-northeast-1/ap-northeast-3）は両方残す** | 同左 |
+>
+> ⚠️ **大阪で作るときの要確認2点（早めに）**
+> 1. **プロキシ疎通**：munuの社内プロキシが `*.lambda-url.ap-northeast-3.on.aws` を通すか。
+>    **⑩のCloudShellテストはAWS内部なのでプロキシを検証しません**。munuから叩く（⑮）まで分からないので、
+>    **Function URLを作ったら早めにmunu（同じプロキシ配下）から一度叩いて確認**。通らなければプロキシ許可を依頼 or 東京へ。
+> 2. **KB/ベクトルストア**：④で「OpenSearch Serverless のクイック作成」が**大阪で選べるか**を確認（サービスが一部限定のことあり）。
+>    選べなければ、別のベクトルストア案 or 東京での構築を検討。
+
 ## ステップ①. Bedrock のモデルを使える状態にする（旧「モデルアクセス」）
 
 > 📝 **2025年以降、AWSは「モデルアクセス」ページを廃止**しました。サーバーレスの基盤モデルは
@@ -158,6 +176,9 @@
    | `KB_ID` | ④の `KB_ID` |
    | `KMS_KEY_ID` | ②のキーID（ARNの `key/` の後ろ） |
 
+   > 🗾 **大阪(ap-northeast-3)で作る場合**：`knowledge-base`／`inference-profile`／`logs` のARNの
+   > `ap-northeast-1` を **`ap-northeast-3`** に変える。**`foundation-model` の2行（ap-northeast-1 と ap-northeast-3）は両方残す**。
+
 4. ポリシー名 `munu-kb-routeb-inline` で作成。
 
 ✅ こうなれば成功：ロールに `munu-kb-routeb-inline` が付き、`s3`/`kms`/`bedrock`/`logs` が対象ARN限定で許可されている。
@@ -175,7 +196,7 @@ Lambda「設定 → 環境変数 → 編集」で、`aws/lambda_env.example.json
 | `KB_ID` | ④の値 | ★ |
 | `DATA_SOURCE_ID` | ④の値 | ★ |
 | `KB_BUCKET` | ③のバケット名 | ★ |
-| `MODEL_ARN` | `arn:aws:bedrock:ap-northeast-1:＜アカウントID＞:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0` | ★ |
+| `MODEL_ARN` | 左メニュー**「推論プロファイル」→ jp. Claude Haiku 4.5**のARNをコピー（例 `arn:aws:bedrock:ap-northeast-1:＜アカウントID＞:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0`。**大阪は ap-northeast-3**） | ★ |
 | `RELAY_KEY` | 0-2の合鍵① | ★ |
 | `ADMIN_OP_KEY` | 0-2の合鍵② | ★ |
 | `KB_PREFIX` | `tacit` | 任意 |
