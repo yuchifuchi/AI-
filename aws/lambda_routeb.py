@@ -568,13 +568,22 @@ def do_ask(body, ctx):
     if dropped:
         _audit("ask_filtered", ctx, dropped=dropped, max_sensitivity=MAX_SENSITIVITY)
 
-    # 2) 文脈：関連度上位を選び、提示は「登録日の新しい順」
+    # 2) 文脈：関連度上位を選び、提示は「登録日の新しい順」。
+    #    各資料に通し番号を振る（同一タイトルは同じ番号に集約）。あとでモデルに「実際に使った番号」を
+    #    申告させ、出典を"実際に回答へ使われたものだけ"に絞る（末尾のSOURCES行）。
     top = sorted(chunks[:CONTEXT_CHUNKS], key=lambda c: c[1], reverse=True)
     ctx_parts = []
+    num_to_tag = {}       # 番号 -> 出典タグ
+    tag_to_num = {}       # タグ -> 番号（重複タイトルは1番号に集約）
     for tag, date, t in top:
-        label = (tag + "｜登録日 " + date) if date else tag
-        head = ("【" + label + "】\n") if label else ""
-        ctx_parts.append(head + t)
+        if tag in tag_to_num:
+            num = tag_to_num[tag]
+        else:
+            num = len(tag_to_num) + 1
+            tag_to_num[tag] = num
+            num_to_tag[num] = tag
+        label = ("[" + str(num) + "] " + tag + ("｜登録日 " + date if date else "")).strip()
+        ctx_parts.append("【" + label + "】\n" + t)
     context = "\n\n---\n\n".join(ctx_parts) if ctx_parts else "(該当する資料は見つかりませんでした)"
 
     # 3) プロンプト本文
@@ -582,6 +591,10 @@ def do_ask(body, ctx):
     if history:
         user_text += "【これまでの会話】\n" + history + "\n\n"
     user_text += "【参考資料】\n" + context + "\n\n【質問】\n" + question
+    if num_to_tag:
+        user_text += ("\n\n【出典の申告】回答の最後に必ず1行だけ、"
+                      "実際に根拠として使った【参考資料】の番号を「SOURCES: 1,3」の形式で書いてください"
+                      "（使わなかった番号は書かない／どの資料も使わなかった場合は「SOURCES: none」）。")
 
     # 4) Converse（必ず日本語回答）
     answer = "（回答の生成に失敗しました）"
@@ -597,14 +610,24 @@ def do_ask(body, ctx):
         print("converse error:", repr(e))
         answer = "回答の生成でエラーが発生しました。しばらくして再度お試しください。"
 
+    # 4b) モデルが申告した「実際に使った資料番号」(SOURCES行)を回答から分離
+    used_nums = None                       # None=申告なし（全件フォールバック）／[]=どれも使わず
+    msrc = re.search(r'(?im)^[\s>*\-]*SOURCES\s*[:：]\s*(.+?)\s*$', answer)
+    if msrc:
+        used_nums = [int(x) for x in re.findall(r'\d+', msrc.group(1))]
+        answer = (answer[:msrc.start()] + answer[msrc.end():]).rstrip()
+
     # 目印の閉じ忘れをここで閉じる（後付けの出典がオレンジ枠に巻き込まれないように）
     diff = answer.count("[[一般]]") - answer.count("[[/一般]]")
     if diff > 0:
         answer += "[[/一般]]" * diff
 
-    # 5) 出典（重複排除・最大5件）
+    # 5) 出典（実際に使われたものだけ・重複排除・最大5件）
+    #    申告があればその番号だけ。申告が無ければ従来どおり全参考資料（フォールバック）。
+    picks = sorted(num_to_tag.keys()) if used_nums is None else used_nums
     sources = []
-    for tag, date, t in chunks[:CONTEXT_CHUNKS]:
+    for num in picks:
+        tag = num_to_tag.get(num)
         if tag and tag not in sources:
             sources.append(tag)
     out = answer
@@ -617,9 +640,29 @@ def do_ask(body, ctx):
 # ============================================================
 #  管理（list/get/edit/delete）── X-Admin-Key を必須検証
 # ============================================================
-def _kb_meta(doc_id):
+def _find_doc(doc_id):
+    """doc_id に対応する『本体ファイル』の (key, ext) を返す。無ければ (None, "")。
+    テキストは ext="txt"、原本は "pdf"/"docx"/"xlsx" など。metadata.json は本体ではない。
+    _official_write は doc_id ごとに本体1つ＋metadata1つだけ残すので一意に定まる。"""
+    prefix = KB_PREFIX + "/" + doc_id + "."
     try:
-        o = s3.get_object(Bucket=KB_BUCKET, Key=KB_PREFIX + "/" + doc_id + ".txt.metadata.json")
+        r = s3.list_objects_v2(Bucket=KB_BUCKET, Prefix=prefix)
+    except Exception:
+        return (None, "")
+    for o in r.get("Contents", []):
+        k = o["Key"]
+        if k.endswith(".metadata.json"):
+            continue
+        return (k, k[len(prefix):].lower())
+    return (None, "")
+
+
+def _kb_meta(doc_id):
+    key, _ext = _find_doc(doc_id)
+    if not key:
+        key = KB_PREFIX + "/" + doc_id + ".txt"   # 後方互換のフォールバック
+    try:
+        o = s3.get_object(Bucket=KB_BUCKET, Key=key + ".metadata.json")
         return (json.loads(o["Body"].read().decode("utf-8")) or {}).get("metadataAttributes", {}) or {}
     except Exception:
         return {}
@@ -644,7 +687,7 @@ def do_admin(body, headers, ctx):
         # 1行 = id \t date \t title \t author \t category \t sensitivity \t type
         tsv = "\n".join("\t".join([
             it["id"], it["date"], it["title"], it["author"], it["category"],
-            it["sensitivity"], it["type"]
+            it["sensitivity"], it["type"], it.get("ext", "txt")
         ]) for it in rows["items"])
         return _resp(200, {"ok": True, "op": "list",
                            "total": rows["total"], "items": rows["items"],
@@ -653,43 +696,55 @@ def do_admin(body, headers, ctx):
     elif op == "get":
         if not _valid_id(doc_id):
             return _resp(400, {"ok": False, "error": "invalid_id"})
-        try:
-            o = s3.get_object(Bucket=KB_BUCKET, Key=KB_PREFIX + "/" + doc_id + ".txt")
-        except ClientError:
+        key, ext = _find_doc(doc_id)
+        if not key:
             return _resp(404, {"ok": False, "error": "not_found"})
-        text = o["Body"].read().decode("utf-8")
-        doc_body = text.split("\n\n", 1)[1] if "\n\n" in text else text
         m = _kb_meta(doc_id)
-        return _resp(200, {"ok": True, "op": "get", "id": doc_id,
+        if ext == "txt":
+            text = s3.get_object(Bucket=KB_BUCKET, Key=key)["Body"].read().decode("utf-8")
+            doc_body = text.split("\n\n", 1)[1] if "\n\n" in text else text
+            is_file = False
+        else:
+            doc_body = ""          # 原本ファイルは本文編集の対象外（メタ情報のみ編集可）
+            is_file = True
+        return _resp(200, {"ok": True, "op": "get", "id": doc_id, "ext": ext, "is_file": is_file,
                            "title": m.get("title", ""), "category": m.get("category", ""),
                            "author": m.get("author", ""), "sensitivity": m.get("sensitivity", "low"),
                            "body": doc_body})
 
     elif op == "edit":
+        if not _valid_id(doc_id):
+            return _resp(400, {"ok": False, "error": "invalid_id"})
+        key, ext = _find_doc(doc_id)
+        if not key:
+            return _resp(404, {"ok": False, "error": "not_found"})
         title = (body.get("title") or "").strip()
-        text_body = (body.get("body") or "").strip()
         author = (body.get("author") or "").strip() or "匿名"
         category = (body.get("category") or "").strip() or "未分類"
         sensitivity = (body.get("sensitivity") or "low").strip().lower()
         if sensitivity not in _SENS_ORDER:
             sensitivity = "low"
-        if not _valid_id(doc_id) or not title or not text_body:
-            return _resp(400, {"ok": False, "error": "id_title_body_required"})
-        # 既存の種別(official/tacit)を保持する。編集で「公式文書」を「暗黙知」に格下げしない。
+        if not title:
+            return _resp(400, {"ok": False, "error": "id_title_required"})
+        # 既存の種別(official/tacit)と slug を保持（格下げ防止・再投入同一性の維持）
         cur = _kb_meta(doc_id)
         cur_type = (cur.get("type") or "tacit").strip().lower()
-        cur_slug = cur.get("slug")  # 公式マニュアルの slug は編集後も維持（再投入の同一性）
-        if cur_type == "official":
-            type_meta, type_label = "official", "公式文書（正式・確定情報）"
-        else:
-            type_meta, type_label = "tacit", "職員の気づき（暗黙知・未確定の参考情報）"
+        cur_slug = cur.get("slug")
+        type_meta = "official" if cur_type == "official" else "tacit"
         today = _today_jst()
-        text = _build_doc_text(type_label, title, author, today, category, text_body)
         meta = _build_meta(type_meta, title, author, category, today, sensitivity, slug=cur_slug)
-        base = KB_PREFIX + "/" + doc_id + ".txt"
-        s3.put_object(Bucket=KB_BUCKET, Key=base,
-                      Body=text.encode("utf-8"), ContentType="text/plain; charset=utf-8")
-        s3.put_object(Bucket=KB_BUCKET, Key=base + ".metadata.json",
+        if ext == "txt":
+            # テキスト文書：本文も書き換える
+            text_body = (body.get("body") or "").strip()
+            if not text_body:
+                return _resp(400, {"ok": False, "error": "id_title_body_required"})
+            type_label = ("公式文書（正式・確定情報）" if type_meta == "official"
+                          else "職員の気づき（暗黙知・未確定の参考情報）")
+            text = _build_doc_text(type_label, title, author, today, category, text_body)
+            s3.put_object(Bucket=KB_BUCKET, Key=key,
+                          Body=text.encode("utf-8"), ContentType="text/plain; charset=utf-8")
+        # 原本ファイル(pdf/docx/xlsx等)は本体を変えず、メタ情報(タイトル/カテゴリ/AI回答等)だけ更新
+        s3.put_object(Bucket=KB_BUCKET, Key=key + ".metadata.json",
                       Body=json.dumps(meta, ensure_ascii=False).encode("utf-8"),
                       ContentType="application/json")
         _ingest()
@@ -699,9 +754,11 @@ def do_admin(body, headers, ctx):
     elif op == "delete":
         if not _valid_id(doc_id):
             return _resp(400, {"ok": False, "error": "invalid_id"})
-        base = KB_PREFIX + "/" + doc_id + ".txt"
-        s3.delete_object(Bucket=KB_BUCKET, Key=base)
-        s3.delete_object(Bucket=KB_BUCKET, Key=base + ".metadata.json")
+        key, ext = _find_doc(doc_id)
+        if not key:
+            key = KB_PREFIX + "/" + doc_id + ".txt"   # 後方互換フォールバック
+        s3.delete_object(Bucket=KB_BUCKET, Key=key)
+        s3.delete_object(Bucket=KB_BUCKET, Key=key + ".metadata.json")
         _ingest()
         _audit("admin_delete_done", ctx, id=doc_id)
         return _resp(200, {"ok": True, "op": "delete", "message": "削除しました"})
@@ -711,23 +768,33 @@ def do_admin(body, headers, ctx):
 
 
 def _admin_list():
-    keys, token = [], None
+    # 本体ファイル（.txt もPDF/Word/Excel等の原本も）を列挙。metadata.json は除外。
+    docs, token = [], None      # (key, doc_id, ext)
     while True:
         kw = {"Bucket": KB_BUCKET, "Prefix": KB_PREFIX + "/"}
         if token:
             kw["ContinuationToken"] = token
         resp = s3.list_objects_v2(**kw)
         for o in resp.get("Contents", []):
-            if o["Key"].endswith(".txt"):
-                keys.append(o["Key"])
+            k = o["Key"]
+            if k.endswith(".metadata.json"):
+                continue
+            name = k[len(KB_PREFIX) + 1:]      # doc_id.ext
+            dot = name.rfind(".")
+            if dot <= 0:
+                continue
+            docs.append((k, name[:dot], name[dot + 1:].lower()))
         if resp.get("IsTruncated"):
             token = resp.get("NextContinuationToken")
         else:
             break
     rows = []
-    for k in keys:
-        did = k[len(KB_PREFIX) + 1:-4]
-        m = _kb_meta(did)
+    for (k, did, ext) in docs:
+        try:
+            o = s3.get_object(Bucket=KB_BUCKET, Key=k + ".metadata.json")
+            m = (json.loads(o["Body"].read().decode("utf-8")) or {}).get("metadataAttributes", {}) or {}
+        except Exception:
+            m = {}
         rows.append({
             "id": did,
             "date": _san(m.get("date", "")),
@@ -736,7 +803,7 @@ def _admin_list():
             "category": _san(m.get("category", "")),
             "sensitivity": _san(m.get("sensitivity", "low")),
             "type": _san(m.get("type", "tacit")),
+            "ext": _san(ext),
         })
     rows.sort(key=lambda r: r["date"], reverse=True)
-    capped = rows[:200]
-    return {"total": len(rows), "items": capped}
+    return {"total": len(rows), "items": rows[:200]}

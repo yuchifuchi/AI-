@@ -165,7 +165,7 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
       <a class="mini" href="kb_bulk.asp">公式一括投入</a>
       <a class="mini" href="kb_admin.asp?logout=1">ログアウト</a>
     </header>
-    <div class="head"><h1>暗黙知の管理</h1><p>登録済みの暗黙知を<b>編集・削除</b>できます。「AI回答」列で、AIの回答に使う/使わないを切り替えられます。</p></div>
+    <div class="head"><h1>文書の管理</h1><p>登録済みの文書（暗黙知・公式マニュアル）を<b>編集・削除</b>できます。「AI回答」列で、AIの回答に使う/使わないを切り替えられます。</p></div>
 
 <%
 If status = -1 Then
@@ -180,7 +180,7 @@ ElseIf Not opOk And view <> "result" Then
 <%
 ElseIf view = "list" Then
     ' ---- 一覧表示（rows_tsv を1行=タブ区切りで解析）----
-    Dim total, tsv, lines, i, parts, sclass, slbl, ptype, tcls, tlbl
+    Dim total, tsv, lines, i, parts, sclass, slbl, ptype, tcls, tlbl, docext
     total = JsonRaw(resp, "total")
     tsv = JsonStr(resp, "rows_tsv")
 %>
@@ -206,17 +206,18 @@ ElseIf view = "list" Then
                     ptype = "tacit" : tcls = "tacit" : tlbl = "暗黙知"
                     If UBound(parts) >= 6 Then ptype = parts(6)
                     If ptype = "official" Then tcls = "official" : tlbl = "公式"
+                    docext = "" : If UBound(parts) >= 7 Then docext = LCase(parts(7))
 %>
       <tr>
         <td class="date"><%= Server.HTMLEncode(parts(1)) %></td>
-        <td class="title"><%= Server.HTMLEncode(parts(2)) %></td>
+        <td class="title"><%= Server.HTMLEncode(parts(2)) %><% If Len(docext) > 0 And docext <> "txt" Then %> <span class="mono">［<%= Server.HTMLEncode(UCase(docext)) %>］</span><% End If %></td>
         <td><%= Server.HTMLEncode(parts(3)) %></td>
         <td><%= Server.HTMLEncode(parts(4)) %></td>
         <td><span class="chip <%= tcls %>"><%= tlbl %></span></td>
         <td><span class="chip <%= sclass %>"><%= slbl %></span></td>
         <td><div class="rowacts">
           <a class="mini" href="kb_admin.asp?action=editform&amp;id=<%= Server.URLEncode(parts(0)) %>">編集</a>
-          <form method="post" action="kb_admin.asp" class="inline-form" onsubmit="return confirm('この暗黙知を削除します。よろしいですか？');">
+          <form method="post" action="kb_admin.asp" class="inline-form" onsubmit="return confirm('この文書を削除します。よろしいですか？');">
             <input type="hidden" name="action" value="delete" />
             <input type="hidden" name="csrf" value="<%= Server.HTMLEncode(CsrfToken()) %>" />
             <input type="hidden" name="id" value="<%= Server.HTMLEncode(parts(0)) %>" />
@@ -236,16 +237,18 @@ ElseIf view = "list" Then
 <%
 ElseIf view = "editform" Then
     ' ---- 編集フォーム ----
-    Dim eTitle, eCat, eAuthor, eSens, eBody
+    Dim eTitle, eCat, eAuthor, eSens, eBody, eIsFile, eExt
     eTitle = JsonStr(resp, "title")
     eCat = JsonStr(resp, "category")
     eAuthor = JsonStr(resp, "author")
     eSens = JsonStr(resp, "sensitivity")
     eBody = JsonStr(resp, "body")
+    eIsFile = JsonBool(resp, "is_file")
+    eExt = JsonStr(resp, "ext")
     If Len(eSens) = 0 Then eSens = "low"
 %>
   <div class="card pad">
-    <h2 class="card-title">✏️ 暗黙知を編集</h2>
+    <h2 class="card-title">✏️ 文書を編集</h2>
     <p class="muted lead">保存すると登録日は本日に更新され、最新版として扱われます。</p>
     <form method="post" action="kb_admin.asp">
       <input type="hidden" name="action" value="edit" />
@@ -254,8 +257,13 @@ ElseIf view = "editform" Then
       <input type="hidden" name="author" value="<%= Server.HTMLEncode(eAuthor) %>" />
       <div class="field"><label>タイトル</label>
         <input class="control" type="text" name="title" maxlength="200" value="<%= Server.HTMLEncode(eTitle) %>" required /></div>
+<% If eIsFile Then %>
+      <div class="field"><label>本文</label>
+        <p class="fhint">これは原本ファイル（<%= Server.HTMLEncode(UCase(eExt)) %>）です。本文はファイルそのものなので、ここでは編集できません。<b>タイトル・カテゴリ・AI回答</b>のみ変更できます（中身を差し替えるには「公式一括投入」で<b>同じファイル名</b>で再投入してください）。</p></div>
+<% Else %>
       <div class="field"><label>本文</label>
         <textarea class="control" name="body" required><%= Server.HTMLEncode(eBody) %></textarea></div>
+<% End If %>
       <div class="field"><label>カテゴリ</label>
         <input class="control" type="text" name="category" maxlength="60" value="<%= Server.HTMLEncode(eCat) %>" /></div>
       <div class="field"><label>AIの回答での利用</label>
