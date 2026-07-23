@@ -205,17 +205,16 @@ td.title{color:var(--ink); font-weight:700;}
 .control.sm{width:auto; padding:8px 11px; font-size:.9rem; border-radius:9px;}
 td .control.sm{width:100%;}
 
-/* プレビュー表：列幅を固定してタイトル/カテゴリを広く、編集欄を使いやすく */
-.bulktable{min-width:900px; table-layout:fixed;}
+/* プレビュー表：列幅を固定してタイトル/カテゴリを広く、編集欄を使いやすく（7列） */
+.bulktable{min-width:860px; table-layout:fixed;}
 .bulktable th{white-space:nowrap;}
-.bulktable th:nth-child(1),.bulktable td:nth-child(1){width:14%;}
-.bulktable th:nth-child(2),.bulktable td:nth-child(2){width:12%;}
-.bulktable th:nth-child(3),.bulktable td:nth-child(3){width:20%;}
-.bulktable th:nth-child(4),.bulktable td:nth-child(4){width:13%;}
-.bulktable th:nth-child(5),.bulktable td:nth-child(5){width:11%;}
-.bulktable th:nth-child(6),.bulktable td:nth-child(6){width:8%;}
-.bulktable th:nth-child(7),.bulktable td:nth-child(7){width:15%;}
-.bulktable th:nth-child(8),.bulktable td:nth-child(8){width:7%;}
+.bulktable th:nth-child(1),.bulktable td:nth-child(1){width:15%;}
+.bulktable th:nth-child(2),.bulktable td:nth-child(2){width:13%;}
+.bulktable th:nth-child(3),.bulktable td:nth-child(3){width:23%;}
+.bulktable th:nth-child(4),.bulktable td:nth-child(4){width:15%;}
+.bulktable th:nth-child(5),.bulktable td:nth-child(5){width:8%;}
+.bulktable th:nth-child(6),.bulktable td:nth-child(6){width:19%;}
+.bulktable th:nth-child(7),.bulktable td:nth-child(7){width:7%;}
 .bulktable td:nth-child(1),.bulktable td:nth-child(2){word-break:break-all;}
 .warntext{margin:2px 2px 12px; min-height:1.1em; font-size:.82rem; color:var(--warn);}
 .emptyrow{padding:16px 4px; color:var(--muted); font-size:.88rem;}

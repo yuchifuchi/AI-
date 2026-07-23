@@ -132,8 +132,10 @@ If method = "POST" And Request.Form("action") = "bulk_register" Then
             sTitle = Trim(Request.Form("title_" & i) & "")
             sSlug  = Trim(Request.Form("slug_" & i) & "")
             sCat   = Trim(Request.Form("cat_" & i) & "")
-            sSens  = LCase(Trim(Request.Form("sens_" & i) & ""))
-            If sSens <> "low" And sSens <> "mid" And sSens <> "high" Then sSens = "low"
+            ' 機微度の選択はUIから廃止（全件「通常」= low で登録）。
+            ' 例外的にAIの回答へ使いたくない文書は、登録後に kb_admin の編集で
+            ' 「使わない（AI非公開 = high）」へ変更する運用。
+            sSens = "low"
             sKind  = LCase(Trim(Request.Form("kind_" & i) & ""))
             itemJson = ""
 
@@ -294,12 +296,6 @@ Else
       <div class="bulkbar">
         <div class="field inline"><label>既定カテゴリ</label>
           <input class="control sm" type="text" id="defCategory" value="公式マニュアル" /></div>
-        <div class="field inline"><label>既定の機微度</label>
-          <select class="control sm" id="defSensitivity">
-            <option value="low" selected>low（一般・誰でも参照可）</option>
-            <option value="mid">mid（社内限定）</option>
-            <option value="high">high（機微・一般質問では参照させない）</option>
-          </select></div>
         <button type="button" class="mini" id="applyAll">既定を全行へ適用</button>
         <button type="button" class="mini" id="clearAll">全部クリア</button>
         <span class="muted" id="pickSummary"></span>
@@ -312,7 +308,7 @@ Else
         <div class="twrap"><table class="bulktable">
           <thead><tr>
             <th>ファイル名</th><th>識別子(slug)</th><th>タイトル</th><th>カテゴリ</th>
-            <th>機微度</th><th>文字数</th><th>本文プレビュー</th><th class="tar">除外</th>
+            <th>文字数</th><th>本文プレビュー</th><th class="tar">除外</th>
           </tr></thead>
           <tbody id="previewBody"></tbody>
         </table></div>
@@ -352,7 +348,6 @@ Else
   var summary = document.getElementById('pickSummary');
   var submitBtn = document.getElementById('submitBtn');
   var defCat = document.getElementById('defCategory');
-  var defSens = document.getElementById('defSensitivity');
   var bulkForm = document.getElementById('bulkForm');
   var warn = document.getElementById('clientWarn');
 
@@ -389,7 +384,7 @@ Else
           if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
           rows.push({ kind:'text', filename:f.name, slug:slugify(stem), title:deriveTitle(text, stem),
             body:text, sizeBytes:f.size, ext:ext,
-            category:(defCat.value || '公式マニュアル'), sensitivity:(defSens.value || 'low') });
+            category:(defCat.value || '公式マニュアル') });
           render();
         };
         tr.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
@@ -404,7 +399,7 @@ Else
           if (!b64){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; return; }
           rows.push({ kind:'file', filename:f.name, slug:slugify(stem), title:stem,
             b64:b64, ext:ext, sizeBytes:f.size,
-            category:(defCat.value || '公式マニュアル'), sensitivity:(defSens.value || 'low') });
+            category:(defCat.value || '公式マニュアル') });
           render();
         };
         br.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
@@ -444,15 +439,6 @@ Else
 
       var tdCat = document.createElement('td');
       tdCat.appendChild(makeInput(r.category, function(v){ r.category = v; })); tr.appendChild(tdCat);
-
-      var tdSens = document.createElement('td');
-      var sel = document.createElement('select'); sel.className = 'control sm';
-      ['low', 'mid', 'high'].forEach(function(v){
-        var o = document.createElement('option'); o.value = v; o.textContent = v;
-        if (r.sensitivity === v) o.selected = true; sel.appendChild(o);
-      });
-      sel.addEventListener('change', function(){ r.sensitivity = sel.value; });
-      tdSens.appendChild(sel); tr.appendChild(tdSens);
 
       var tdLen = document.createElement('td'); tdLen.className = 'muted';
       tdLen.textContent = (r.kind === 'file') ? (Math.round(r.sizeBytes / 1024) + 'KB') : String(r.body.length);
@@ -496,8 +482,8 @@ Else
   });
 
   document.getElementById('applyAll').addEventListener('click', function(){
-    var c = defCat.value || '公式マニュアル', s = defSens.value || 'low';
-    rows.forEach(function(r){ r.category = c; r.sensitivity = s; });
+    var c = defCat.value || '公式マニュアル';
+    rows.forEach(function(r){ r.category = c; });
     render();
   });
   document.getElementById('clearAll').addEventListener('click', function(){ rows = []; warn.textContent = ''; render(); });
@@ -541,7 +527,6 @@ Else
       inj('slug_' + i, r.slug);                 // 空でも可（サーバがタイトルで代替）
       inj('title_' + i, r.title);
       inj('cat_' + i, r.category);
-      inj('sens_' + i, r.sensitivity);
       if (r.kind === 'file'){
         inj('ext_' + i, r.ext);
         inj('b64_' + i, r.b64);                 // base64は1行・改行なしなので hidden input で可

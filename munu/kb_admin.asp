@@ -165,7 +165,7 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
       <a class="mini" href="kb_bulk.asp">公式一括投入</a>
       <a class="mini" href="kb_admin.asp?logout=1">ログアウト</a>
     </header>
-    <div class="head"><h1>暗黙知の管理</h1><p>登録済みの暗黙知を<b>編集・削除</b>できます。機微度で参照範囲を調整します。</p></div>
+    <div class="head"><h1>暗黙知の管理</h1><p>登録済みの暗黙知を<b>編集・削除</b>できます。「AI回答」列で、AIの回答に使う/使わないを切り替えられます。</p></div>
 
 <%
 If status = -1 Then
@@ -180,14 +180,14 @@ ElseIf Not opOk And view <> "result" Then
 <%
 ElseIf view = "list" Then
     ' ---- 一覧表示（rows_tsv を1行=タブ区切りで解析）----
-    Dim total, tsv, lines, i, parts, sclass, ptype, tcls, tlbl
+    Dim total, tsv, lines, i, parts, sclass, slbl, ptype, tcls, tlbl
     total = JsonRaw(resp, "total")
     tsv = JsonStr(resp, "rows_tsv")
 %>
   <div class="card">
     <div class="admin-head"><div class="count"><b><%= Server.HTMLEncode(total) %></b> 件（新しい順・最大200件表示）</div></div>
     <div class="twrap"><table>
-      <thead><tr><th>登録日</th><th>タイトル</th><th>登録者</th><th>カテゴリ</th><th>種別</th><th>機微度</th><th class="tar">操作</th></tr></thead>
+      <thead><tr><th>登録日</th><th>タイトル</th><th>登録者</th><th>カテゴリ</th><th>種別</th><th>AI回答</th><th class="tar">操作</th></tr></thead>
       <tbody>
 <%
     If Len(tsv) > 0 Then
@@ -196,9 +196,13 @@ ElseIf view = "list" Then
             If Len(lines(i)) > 0 Then
                 parts = Split(lines(i), vbTab)
                 If UBound(parts) >= 5 Then
-                    sclass = "low"
-                    If parts(5) = "mid" Then sclass = "mid"
-                    If parts(5) = "high" Then sclass = "high"
+                    ' 機微度は画面上「AIの回答に使う/使わない」の2値で表示する
+                    ' （内部値は low/mid/high のまま。mid は旧データ＝「使う」扱い）
+                    If parts(5) = "high" Then
+                        sclass = "high" : slbl = "使わない"
+                    Else
+                        sclass = "low" : slbl = "使う"
+                    End If
                     ptype = "tacit" : tcls = "tacit" : tlbl = "暗黙知"
                     If UBound(parts) >= 6 Then ptype = parts(6)
                     If ptype = "official" Then tcls = "official" : tlbl = "公式"
@@ -209,7 +213,7 @@ ElseIf view = "list" Then
         <td><%= Server.HTMLEncode(parts(3)) %></td>
         <td><%= Server.HTMLEncode(parts(4)) %></td>
         <td><span class="chip <%= tcls %>"><%= tlbl %></span></td>
-        <td><span class="chip <%= sclass %>"><%= Server.HTMLEncode(parts(5)) %></span></td>
+        <td><span class="chip <%= sclass %>"><%= slbl %></span></td>
         <td><div class="rowacts">
           <a class="mini" href="kb_admin.asp?action=editform&amp;id=<%= Server.URLEncode(parts(0)) %>">編集</a>
           <form method="post" action="kb_admin.asp" class="inline-form" onsubmit="return confirm('この暗黙知を削除します。よろしいですか？');">
@@ -254,12 +258,13 @@ ElseIf view = "editform" Then
         <textarea class="control" name="body" required><%= Server.HTMLEncode(eBody) %></textarea></div>
       <div class="field"><label>カテゴリ</label>
         <input class="control" type="text" name="category" maxlength="60" value="<%= Server.HTMLEncode(eCat) %>" /></div>
-      <div class="field"><label>機微度（この文書をAIが参照してよい範囲）</label>
+      <div class="field"><label>AIの回答での利用</label>
         <select class="control" name="sensitivity">
-          <option value="low"<% If eSens="low" Then %> selected<% End If %>>low（一般・誰でも参照可）</option>
-          <option value="mid"<% If eSens="mid" Then %> selected<% End If %>>mid（社内限定）</option>
-          <option value="high"<% If eSens="high" Then %> selected<% End If %>>high（機微・一般質問では参照させない）</option>
-        </select></div>
+          <%' 画面は2択（内部値は low / high）。旧データの mid は「使う」として表示し、保存時に low へ寄せる %>
+          <option value="low"<% If eSens <> "high" Then %> selected<% End If %>>使う（通常）</option>
+          <option value="high"<% If eSens = "high" Then %> selected<% End If %>>使わない（AI非公開・保管のみ）</option>
+        </select>
+        <p class="fhint">「使わない」にすると、この文書はAIの回答に使われなくなります（管理画面には残り、いつでも戻せます）。</p></div>
       <div class="actions">
         <a class="btn btn-ghost" href="kb_admin.asp">キャンセル</a>
         <button type="submit" class="btn btn-primary">この内容で保存する</button>
