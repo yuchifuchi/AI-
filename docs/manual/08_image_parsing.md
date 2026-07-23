@@ -93,6 +93,48 @@
 
 ---
 
+## ⚠️ 3-B. 解析モデルで同期が失敗する（モデルアクセス／KBロール権限）
+
+高度な解析を有効にして同期すると、こんなエラーが出ることがあります：
+
+> `Knowledge base role ... is not able to call the specified model ... Model access is denied ... (aws-marketplace:Subscribe) ...`
+
+意味：**KBのサービスロールが、解析用に選んだ基盤モデル（例：Claude Sonnet 4.5）を呼べない**。
+原因は2つあり、**両方**を満たす必要があります。
+
+**① 解析モデルの「モデルアクセス」を有効化（アカウント単位）**
+- Bedrock（**大阪 ap-northeast-3**）→「モデルカタログ／モデルアクセス」で、**選んだ解析モデル（例：Claude Sonnet 4.5）を有効化**。
+- 反映に数分（エラーにも「2分後に再試行」とある）。→ 有効化後に**もう一度［同期］**。
+
+**② KBサービスロールに「InvokeModel」権限を足す**
+- ①だけで直らない場合、KBロールに解析モデルを呼ぶ権限が無い。
+- IAM →「ロール」→ エラーに出ている **KBロール**（例：`AmazonBedrockExecutionRoleForKnowledgeBase_xxxx`）→
+  「許可を追加」→「インラインポリシーを作成」→ JSON に以下を貼る（**ARNは自分のアカウント/リージョン/モデルに合わせる**）：
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "KbAdvancedParsingInvokeModel",
+    "Effect": "Allow",
+    "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+    "Resource": [
+      "arn:aws:bedrock:ap-northeast-3:＜アカウントID＞:inference-profile/jp.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
+    ]
+  }]
+}
+```
+- 保存 → 2分ほど待って **再度［同期］**。
+
+> 📌 これは **Lambdaの実行ロールではなく、KB（ナレッジベース）のサービスロール**への追加です。混同注意。
+> 💡 待ち時間を避けたいなら、解析モデルに**すでに有効化済みのモデル（例：回答用のClaude Haiku 4.5）**を使う手も
+> （①が不要に。②のInvokeModel権限は同様に付与）。ただし複雑な図は上位モデルの方が正確です。
+
+---
+
 ## 4. コストの考え方（目安）
 
 - 高度な解析の費用は **「取り込み（同期）した時に1回だけ」** ページ単位で発生します（質問のたびではありません）。
