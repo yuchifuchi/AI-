@@ -362,7 +362,7 @@ Else
   var warn = document.getElementById('clientWarn');
 
   function slugify(s){
-    s = (s || '').replace(/^﻿/, '').trim().toLowerCase();
+    s = (s || '').replace(/^\uFEFF/, '').trim().toLowerCase();
     s = s.replace(/[^a-z0-9_-]+/g, '-').replace(/[-_]{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '');
     return s.slice(0, 80);
   }
