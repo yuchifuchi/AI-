@@ -39,6 +39,7 @@ docs/
   remediation_request_ja.md                    … セキュリティ診断結果と改修依頼（元資料）
   routeb_design.md                  … 新方式の設計と、その理由
   security_summary.md          … 診断で挙がった弱点 → 対策 の対応表
+  security_qa.md               … 想定問答集（漏洩リスク・仕様を詰問された時の技術根拠つき回答）
   manual/                         … ★中学生でもできる設定マニュアル（ここから読む）
     00_intro_glossary.md
     01_aws_setup.md
