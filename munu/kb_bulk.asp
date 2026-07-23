@@ -132,10 +132,10 @@ If method = "POST" And Request.Form("action") = "bulk_register" Then
             sTitle = Trim(Request.Form("title_" & i) & "")
             sSlug  = Trim(Request.Form("slug_" & i) & "")
             sCat   = Trim(Request.Form("cat_" & i) & "")
-            ' 機微度の選択はUIから廃止（全件「通常」= low で登録）。
-            ' 例外的にAIの回答へ使いたくない文書は、登録後に kb_admin の編集で
-            ' 「使わない（AI非公開 = high）」へ変更する運用。
-            sSens = "low"
+            ' AI回答フラグ（2択）：sens_i が "high" のときだけ「使わない(AI非公開・保管のみ)」。
+            ' 未指定・想定外の値は既定の "low"（＝AIの回答に使う）に倒す。
+            sSens = LCase(Trim(Request.Form("sens_" & i) & ""))
+            If sSens <> "high" Then sSens = "low"
             sKind  = LCase(Trim(Request.Form("kind_" & i) & ""))
             itemJson = ""
 
@@ -296,6 +296,11 @@ Else
       <div class="bulkbar">
         <div class="field inline"><label>既定カテゴリ</label>
           <input class="control sm" type="text" id="defCategory" value="公式マニュアル" /></div>
+        <div class="field inline"><label>既定のAI回答</label>
+          <select class="control sm" id="defSens">
+            <option value="low">使う（通常）</option>
+            <option value="high">使わない（AI非公開・保管のみ）</option>
+          </select></div>
         <button type="button" class="mini" id="applyAll">既定を全行へ適用</button>
         <button type="button" class="mini" id="clearAll">全部クリア</button>
         <span class="muted" id="pickSummary"></span>
@@ -308,7 +313,7 @@ Else
         <div class="twrap"><table class="bulktable">
           <thead><tr>
             <th>ファイル名</th><th>識別子(slug)</th><th>タイトル</th><th>カテゴリ</th>
-            <th>文字数</th><th>本文プレビュー</th><th class="tar">除外</th>
+            <th>AI回答</th><th>文字数</th><th>本文プレビュー</th><th class="tar">除外</th>
           </tr></thead>
           <tbody id="previewBody"></tbody>
         </table></div>
@@ -322,6 +327,7 @@ Else
         <ul>
           <li><b>対応形式：</b>Markdown/テキスト（.md/.txt）に加え、<b>PDF・Word（.docx）・Excel（.xlsx）・CSV・HTML</b>の原本も投入できます（本文はBedrockが解析）。</li>
           <li><b>ファイル名＝マニュアルの識別子(slug)</b>。<b>同じファイル名で再投入すると「更新（上書き）」</b>になり、重複が増えません（改訂に便利）。</li>
+          <li><b>AI回答：</b>「使う」＝AIの回答に使用（通常）。「使わない」＝<b>保管のみでAIの回答には出しません</b>（社外秘の台帳・原本の保全など）。上のバーで既定を選び「既定を全行へ適用」でまとめて設定、行ごとの変更も可能です。登録後も <a href="kb_admin.asp">管理画面</a> で切替できます。</li>
           <li>タイトルは、テキストは先頭見出し（<span class="mono"># …</span>）、原本ファイルはファイル名から自動セット。表内で修正できます。</li>
           <li>大きいPDF等は<b>1〜数件ずつ</b>に。<b>スキャン画像だけのPDF</b>はBedrockの「高度な解析（OCR）」を有効化しないと本文が取れません。原本ファイルの投入にはIISの <span class="mono">AspMaxRequestEntityAllowed</span> の引き上げが必要です。</li>
           <li>登録した公式マニュアルは <a href="kb_admin.asp">管理画面</a> で編集・削除できます（種別「公式」で表示）。</li>
@@ -348,7 +354,10 @@ Else
   var summary = document.getElementById('pickSummary');
   var submitBtn = document.getElementById('submitBtn');
   var defCat = document.getElementById('defCategory');
+  var defSens = document.getElementById('defSens');
   var bulkForm = document.getElementById('bulkForm');
+
+  function defSensVal(){ return (defSens && defSens.value === 'high') ? 'high' : 'low'; }
   var warn = document.getElementById('clientWarn');
 
   function slugify(s){
@@ -384,7 +393,7 @@ Else
           if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
           rows.push({ kind:'text', filename:f.name, slug:slugify(stem), title:deriveTitle(text, stem),
             body:text, sizeBytes:f.size, ext:ext,
-            category:(defCat.value || '公式マニュアル') });
+            category:(defCat.value || '公式マニュアル'), sens:defSensVal() });
           render();
         };
         tr.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
@@ -399,7 +408,7 @@ Else
           if (!b64){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; return; }
           rows.push({ kind:'file', filename:f.name, slug:slugify(stem), title:stem,
             b64:b64, ext:ext, sizeBytes:f.size,
-            category:(defCat.value || '公式マニュアル') });
+            category:(defCat.value || '公式マニュアル'), sens:defSensVal() });
           render();
         };
         br.onerror = function(){ warn.textContent = '「' + f.name + '」の読み取りに失敗しました。'; };
@@ -418,14 +427,26 @@ Else
     el.addEventListener('input', function(){ oninput(el.value); });
     return el;
   }
+  // AI回答フラグ（2択）のプルダウン。値は low(使う)/high(使わない)。
+  function makeSensSelect(r){
+    var sel = document.createElement('select');
+    sel.className = 'control sm';
+    var o1 = document.createElement('option'); o1.value = 'low';  o1.textContent = '使う';
+    var o2 = document.createElement('option'); o2.value = 'high'; o2.textContent = '使わない';
+    sel.appendChild(o1); sel.appendChild(o2);
+    sel.value = (r.sens === 'high') ? 'high' : 'low';
+    sel.addEventListener('change', function(){ r.sens = (sel.value === 'high') ? 'high' : 'low'; render(); });
+    return sel;
+  }
 
   function render(){
     while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
     if (!rows.length){ emptyMsg.style.display = ''; summary.textContent = ''; submitBtn.disabled = true; return; }
     emptyMsg.style.display = 'none';
-    var totalBytes = 0;
+    var totalBytes = 0, noAi = 0;
     rows.forEach(function(r, idx){
       totalBytes += rowBytes(r);
+      if (r.sens === 'high') noAi++;
       var tr = document.createElement('tr');
 
       var tdFile = document.createElement('td'); tdFile.className = 'mono';
@@ -439,6 +460,9 @@ Else
 
       var tdCat = document.createElement('td');
       tdCat.appendChild(makeInput(r.category, function(v){ r.category = v; })); tr.appendChild(tdCat);
+
+      var tdSens = document.createElement('td');
+      tdSens.appendChild(makeSensSelect(r)); tr.appendChild(tdSens);
 
       var tdLen = document.createElement('td'); tdLen.className = 'muted';
       tdLen.textContent = (r.kind === 'file') ? (Math.round(r.sizeBytes / 1024) + 'KB') : String(r.body.length);
@@ -460,7 +484,7 @@ Else
       tbody.appendChild(tr);
     });
     var kb = Math.round(totalBytes / 1024);
-    summary.textContent = rows.length + '件 / 合計 約' + kb + 'KB';
+    summary.textContent = rows.length + '件 / 合計 約' + kb + 'KB' + (noAi ? ' / うちAI非公開 ' + noAi + '件' : '');
     submitBtn.disabled = false;
     warn.textContent = (totalBytes > MAXTOTALBYTES - 200000)
       ? '合計サイズが大きめ（約' + kb + 'KB）です。送信できない場合は件数を分けてください（IISの AspMaxRequestEntityAllowed の調整も必要）。'
@@ -482,8 +506,8 @@ Else
   });
 
   document.getElementById('applyAll').addEventListener('click', function(){
-    var c = defCat.value || '公式マニュアル';
-    rows.forEach(function(r){ r.category = c; });
+    var c = defCat.value || '公式マニュアル', s = defSensVal();
+    rows.forEach(function(r){ r.category = c; r.sens = s; });
     render();
   });
   document.getElementById('clearAll').addEventListener('click', function(){ rows = []; warn.textContent = ''; render(); });
@@ -527,6 +551,7 @@ Else
       inj('slug_' + i, r.slug);                 // 空でも可（サーバがタイトルで代替）
       inj('title_' + i, r.title);
       inj('cat_' + i, r.category);
+      inj('sens_' + i, (r.sens === 'high') ? 'high' : 'low');   // AI回答フラグ（2択）
       if (r.kind === 'file'){
         inj('ext_' + i, r.ext);
         inj('b64_' + i, r.b64);                 // base64は1行・改行なしなので hidden input で可
