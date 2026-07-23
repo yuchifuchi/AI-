@@ -49,6 +49,7 @@ docs/
     05_verify_troubleshoot.md
     06_munu_https.md
     07_production_build.md
+    08_image_parsing.md
 ```
 
 ---

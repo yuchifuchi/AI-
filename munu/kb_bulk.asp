@@ -326,10 +326,11 @@ Else
       <div class="tips">
         <ul>
           <li><b>対応形式：</b>Markdown/テキスト（.md/.txt）に加え、<b>PDF・Word（.docx）・Excel（.xlsx）・CSV・HTML</b>の原本も投入できます（本文はBedrockが解析）。</li>
+          <li><b>📷 図・画像を含む資料は「PDFで保存」して投入してください。</b>Word/Excelを直接入れると<b>文字だけ</b>が取り込まれ、貼り付けた図・スクショ・写真の中身はAIに伝わりません。<b>PDFに書き出すと、図・スクショ内の文字や数値もAIが読み取り、回答に反映</b>されます（＝Bedrockの「高度な解析」を有効化した環境。手順は <span class="mono">docs/manual/08_image_parsing.md</span>）。</li>
           <li><b>ファイル名＝マニュアルの識別子(slug)</b>。<b>同じファイル名で再投入すると「更新（上書き）」</b>になり、重複が増えません（改訂に便利）。</li>
           <li><b>AI回答：</b>「使う」＝AIの回答に使用（通常）。「使わない」＝<b>保管のみでAIの回答には出しません</b>（社外秘の台帳・原本の保全など）。上のバーで既定を選び「既定を全行へ適用」でまとめて設定、行ごとの変更も可能です。登録後も <a href="kb_admin.asp">管理画面</a> で切替できます。</li>
           <li>タイトルは、テキストは先頭見出し（<span class="mono"># …</span>）、原本ファイルはファイル名から自動セット。表内で修正できます。</li>
-          <li>大きいPDF等は<b>1〜数件ずつ</b>に。<b>スキャン画像だけのPDF</b>はBedrockの「高度な解析（OCR）」を有効化しないと本文が取れません。原本ファイルの投入にはIISの <span class="mono">AspMaxRequestEntityAllowed</span> の引き上げが必要です。</li>
+          <li>大きいPDF等は<b>1〜数件ずつ</b>に。<b>スキャン画像だけのPDF</b>や<b>図の中身</b>まで読ませるにはBedrockの<b>「高度な解析（FMパーサ）」の有効化</b>が必要です（→ <span class="mono">docs/manual/08_image_parsing.md</span>）。原本ファイルの投入にはIISの <span class="mono">AspMaxRequestEntityAllowed</span> の引き上げが必要です。</li>
           <li>登録した公式マニュアルは <a href="kb_admin.asp">管理画面</a> で編集・削除できます（種別「公式」で表示）。</li>
           <li>個人情報やパスワードなど、共有してはいけない情報は載せないでください。</li>
         </ul>
