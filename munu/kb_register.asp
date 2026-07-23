@@ -91,6 +91,11 @@ Function FriendlyError(status, respText)
     End Select
 End Function
 
+' カテゴリのプルダウン：選択中の値の option に selected を付ける小ヘルパ
+Function CatSelAttr(optVal, curVal)
+    If optVal = curVal Then CatSelAttr = " selected" Else CatSelAttr = ""
+End Function
+
 Dim showTitle, showBody, showCategory, showAuthor
 If hasResult And okFlag Then
     showTitle = "" : showBody = "" : showCategory = "" : showAuthor = ""
@@ -163,10 +168,15 @@ End If
         </div>
         <div class="field">
           <label>カテゴリ <span class="opttag">任意</span></label>
-          <input class="control" type="text" name="category" maxlength="60"
-                 placeholder="例：来客対応 / 経費 / 設備 / その他"
-                 value="<%= Server.HTMLEncode(showCategory) %>" />
-          <p class="fhint">空欄なら「未分類」になります。</p>
+          <select class="control" name="category">
+            <option value=""<%= CatSelAttr("", showCategory) %>>（未分類）</option>
+            <option value="システム"<%= CatSelAttr("システム", showCategory) %>>システム</option>
+            <option value="販売管理"<%= CatSelAttr("販売管理", showCategory) %>>販売管理</option>
+            <option value="通販"<%= CatSelAttr("通販", showCategory) %>>通販</option>
+            <option value="受注"<%= CatSelAttr("受注", showCategory) %>>受注</option>
+            <option value="お客様SC"<%= CatSelAttr("お客様SC", showCategory) %>>お客様SC</option>
+          </select>
+          <p class="fhint">一覧から選んでください。「（未分類）」のままでもOKです。</p>
         </div>
         <div class="field">
           <label>登録者名 <span class="opttag">任意</span></label>
