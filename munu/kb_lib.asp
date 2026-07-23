@@ -351,7 +351,7 @@ Sub RenderLoginPage(pageTitle)
         And Len(RELAY_KEY & "") > 0 And RELAY_KEY <> "REPLACE_RELAY_KEY")
 %>
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8" />
+<html lang="ja"><head><meta charset="UTF-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title><%= Server.HTMLEncode(pageTitle) %>｜ログイン</title>
 <link rel="stylesheet" href="kb_style.css" />

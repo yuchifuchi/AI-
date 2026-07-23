@@ -73,7 +73,7 @@ Dim authed : authed = (Session("admin_ok") = True)
 If Not authed Then
 %>
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8" />
+<html lang="ja"><head><meta charset="UTF-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>管理ログイン｜暗黙知</title>
 <link rel="stylesheet" href="kb_style.css" />
@@ -149,7 +149,7 @@ On Error Goto 0
 Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
 %>
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8" />
+<html lang="ja"><head><meta charset="UTF-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>暗黙知 管理｜<%= Server.HTMLEncode(view) %></title>
 <link rel="stylesheet" href="kb_style.css" />

@@ -80,7 +80,7 @@ Dim authed : authed = (Session("admin_ok") = True)
 If Not authed Then
 %>
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8" />
+<html lang="ja"><head><meta charset="UTF-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>管理ログイン｜公式マニュアル一括投入</title>
 <link rel="stylesheet" href="kb_style.css" />
@@ -191,7 +191,7 @@ End If
 Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
 %>
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8" />
+<html lang="ja"><head><meta charset="UTF-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>公式マニュアル 一括投入｜管理</title>
 <link rel="stylesheet" href="kb_style.css" />
@@ -505,6 +505,9 @@ Else
     e.preventDefault(); drop.classList.remove('hot');
     if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
   });
+  // ドロップゾーンの外に落としても、ブラウザがファイルを開いて画面遷移しないようにする保険
+  document.addEventListener('dragover', function(e){ e.preventDefault(); });
+  document.addEventListener('drop', function(e){ e.preventDefault(); });
 
   document.getElementById('applyAll').addEventListener('click', function(){
     var c = defCat.value || '公式マニュアル', s = defSensVal();
