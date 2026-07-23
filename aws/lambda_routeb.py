@@ -48,10 +48,11 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
-KB_ID = os.environ["KB_ID"]
-DATA_SOURCE_ID = os.environ["DATA_SOURCE_ID"]
-KB_BUCKET = os.environ["KB_BUCKET"]
-MODEL_ARN = os.environ["MODEL_ARN"]
+# .strip()：コピペで紛れた前後の空白が Invalid bucket name 等の起動時エラーになるのを防ぐ
+KB_ID = os.environ["KB_ID"].strip()
+DATA_SOURCE_ID = os.environ["DATA_SOURCE_ID"].strip()
+KB_BUCKET = os.environ["KB_BUCKET"].strip()
+MODEL_ARN = os.environ["MODEL_ARN"].strip()
 KB_PREFIX = os.environ.get("KB_PREFIX", "tacit").strip("/")
 NUM_RESULTS = int(os.environ.get("NUM_RESULTS", "20"))
 CONTEXT_CHUNKS = int(os.environ.get("CONTEXT_CHUNKS", "8"))

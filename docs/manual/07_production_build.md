@@ -339,6 +339,8 @@ munu の **`…/tacit2/`** フォルダへ、次の**8ファイル**を **UTF-8�
 | 症状 | ほぼこの原因 | 直し方 |
 |---|---|---|
 | CloudShellテストが `internal_error` | 環境変数漏れ／⑥の `KB_ID`・`KMS_KEY_ID` 置換漏れ | 環境変数とIAMを見直し。CloudWatchログで詳細 |
+| 全リクエストが `HTTP 502` | 環境変数の編集時に**必須変数を消してしまった**（起動時KeyErrorでクラッシュ） | 環境変数6つ（KB_ID/DATA_SOURCE_ID/KB_BUCKET/MODEL_ARN/RELAY_KEY/ADMIN_OP_KEY）が揃っているか確認 |
+| 一覧/投入が失敗し、ログに `ParamValidationError: Invalid bucket name "〜 "` | 環境変数の値に**コピペ由来の余分なスペース**（引用符の直前に空白が見えるのが証拠） | `KB_BUCKET` 等の値を消して打ち直す（前後スペースなし） |
 | `AccessDenied`（取り込み/検索） | KBサービスロールに `kms:Decrypt` が無い | ④-2 を実施 |
 | どこからでも `forbidden` | `ALLOWED_IPS` が実IPでない | `checkip` で実IPを確認し入れ直す／一旦空に |
 | 画面が「ログイン」から進めない | `ACCESS_PASSWORD`/`ADMIN_PASSWORD` 未設定・打ち間違い | `kb_config.asp` を確認・UTF-8保存 |
