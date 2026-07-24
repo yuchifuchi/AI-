@@ -247,3 +247,15 @@ td .control.sm{width:100%;}
   .thread{max-height:none;}
 }
 @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
+
+/* ── 大きいファイルの登録（S3の incoming/ にある待機ファイル）── */
+.stepbox{border:1px solid var(--line); border-radius:12px; background:var(--inset); padding:12px 16px; margin:0 0 16px;}
+.stepbox ol{margin:0; padding-left:1.2em;} .stepbox li{margin:4px 0;}
+.sfile{border:1px solid var(--line-strong); border-radius:12px; padding:14px 16px; margin:0 0 12px; background:var(--surface);}
+.sfile-head{display:flex; align-items:center; gap:8px; margin-bottom:10px; word-break:break-all;}
+.sfile-ic{font-size:1.25rem; line-height:1;}
+.sfile-form{display:flex; align-items:flex-end; gap:10px 12px; flex-wrap:wrap;}
+.sfile-form .field.inline{margin:0;}
+.sfile-form .field.inline label{margin-bottom:4px; font-size:.82rem;}
+.sfile-form .grow{flex:1 1 220px;} .sfile-form .grow .control.sm{width:100%;}
+.sfile-form .btn{padding:9px 16px;}
