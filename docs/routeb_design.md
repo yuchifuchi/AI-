@@ -138,3 +138,11 @@
    （KMS自動・CORS不要）。munu に「既存S3オブジェクトをメタ登録＋取り込み」アクションを追加。設定は最小・確実だが2ステップ。
 
 > 2026-07 時点の判断：**まず ~3.5MB 以下の文書で運用開始し、大きいファイル対応は後日**（上記1 or 2で着手）。
+
+### 実装済み：大きいファイルの登録（S3 incoming/ 経由）
+上記2の考え方を、**munuを一切通さない**形で実装した（`kb_bigfile.asp` ＋ Lambda `action:staging`）。
+- 利用者が S3 の **`incoming/`（データソース対象外の別prefix）** に巨大ファイルを直接アップ（＝munuの本文サイズ制限も Function URL の6MB上限も回避）。
+- `kb_bigfile.asp` が `staging list` で待機ファイルを一覧 → タイトル/カテゴリ/AI回答を付けて `staging register`。
+- Lambda が **`incoming/` → `tacit/{md5(official:slug)}.{ext}` へサーバ側コピー**＋metadata sidecar＋旧版掃除＋元ファイル削除＋`_ingest()`。
+- 正式な32桁hex doc_id が付くので、通常ファイルと同様に**管理画面で編集・削除**できる。`incoming/` は対象外なので**登録するまでAIに載らない**（社外秘の誤露出を防ぐ）。
+- 環境変数：`STAGING_PREFIX`（既定 `incoming`）、`MAX_STAGING_MB`（既定 200）。IAMは既存のS3(Get/Put/Delete/List)＋KMS権限で足りる（追加不要）。

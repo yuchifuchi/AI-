@@ -163,6 +163,7 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
         <a href="kb_admin.asp" class="is-active" aria-current="page">管理</a>
       </nav>
       <a class="mini" href="kb_bulk.asp">公式一括投入</a>
+      <a class="mini" href="kb_bigfile.asp">大きいファイル</a>
       <a class="mini" href="kb_admin.asp?logout=1">ログアウト</a>
     </header>
     <div class="head"><h1>文書の管理</h1><p>登録済みの文書（暗黙知・公式マニュアル）を<b>編集・削除</b>できます。「AI回答」列で、AIの回答に使う/使わないを切り替えられます。</p></div>

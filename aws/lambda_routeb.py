@@ -54,6 +54,9 @@ DATA_SOURCE_ID = os.environ["DATA_SOURCE_ID"].strip()
 KB_BUCKET = os.environ["KB_BUCKET"].strip()
 MODEL_ARN = os.environ["MODEL_ARN"].strip()
 KB_PREFIX = os.environ.get("KB_PREFIX", "tacit").strip("/")
+# 大きいファイルの受け渡し用ステージング領域（データソースの対象外＝置くだけではAIに載らない）
+STAGING_PREFIX = os.environ.get("STAGING_PREFIX", "incoming").strip("/")
+MAX_STAGING_BYTES = int(os.environ.get("MAX_STAGING_MB", "200")) * 1024 * 1024
 NUM_RESULTS = int(os.environ.get("NUM_RESULTS", "20"))
 CONTEXT_CHUNKS = int(os.environ.get("CONTEXT_CHUNKS", "8"))
 
@@ -328,6 +331,8 @@ def lambda_handler(event, context):
             return do_ask(body, ctx)
         elif action == "admin":
             return do_admin(body, headers, ctx)
+        elif action == "staging":
+            return do_staging(body, headers, ctx)
         else:
             return _resp(400, {"ok": False, "error": "unknown_action"})
     except Exception as e:
@@ -807,3 +812,127 @@ def _admin_list():
         })
     rows.sort(key=lambda r: r["date"], reverse=True)
     return {"total": len(rows), "items": rows[:200]}
+
+
+# ============================================================
+#  大きいファイルの登録（S3の incoming/ 経由）── X-Admin-Key を必須検証
+#   ・利用者は巨大ファイルを S3 の incoming/ に直接アップ（munuを通さない＝2MB制限を回避）。
+#   ・incoming/ はデータソース(tacit/)の対象外なので、置いただけではAIに載らない。
+#   ・register で「正式名＋メタ情報」を付け、tacit/ へ"サーバ側コピー"して同期する
+#     （21MBでもLambdaを本文が通らない）。
+# ============================================================
+def do_staging(body, headers, ctx):
+    if not ADMIN_OP_KEY:
+        print("CONFIG ERROR: ADMIN_OP_KEY is not set")
+        return _resp(500, {"ok": False, "error": "server_misconfigured"})
+    if not _ct_eq(headers.get("x-admin-key", ""), ADMIN_OP_KEY):
+        _audit("deny_admin_key", ctx, op="staging:" + (body.get("op") or ""))
+        return _resp(403, {"ok": False, "error": "admin_forbidden"})
+
+    op = (body.get("op") or "").strip().lower()
+    sp = STAGING_PREFIX + "/"
+
+    # ---- 一覧：incoming/ に待機中のファイル ----
+    if op == "list":
+        files, token = [], None
+        while True:
+            kw = {"Bucket": KB_BUCKET, "Prefix": sp}
+            if token:
+                kw["ContinuationToken"] = token
+            resp = s3.list_objects_v2(**kw)
+            for o in resp.get("Contents", []):
+                k = o["Key"]
+                name = k[len(sp):]
+                if not name or name.endswith("/"):
+                    continue                       # フォルダ・プレースホルダは除外
+                dot = name.rfind(".")
+                ext = name[dot + 1:].lower() if dot > 0 else ""
+                files.append({"key": k, "name": name, "ext": ext, "size": o.get("Size", 0)})
+            if resp.get("IsTruncated"):
+                token = resp.get("NextContinuationToken")
+            else:
+                break
+        # classic ASP 用に TSV も同梱（1行 = key \t name \t ext \t size）
+        tsv = "\n".join("\t".join([f["key"], f["name"], f["ext"], str(f["size"])]) for f in files)
+        _audit("staging_list", ctx, total=len(files))
+        return _resp(200, {"ok": True, "op": "list", "total": len(files),
+                           "items": files, "rows_tsv": tsv})
+
+    # list 以外は key（incoming/配下）の妥当性を検証（キー注入・脱出を防ぐ）
+    key = (body.get("key") or "").strip()
+    if (not key.startswith(sp)) or (".." in key) or key.endswith("/") or ("\n" in key) or ("\r" in key):
+        return _resp(400, {"ok": False, "error": "bad_key"})
+
+    # ---- 破棄：incoming/ の元ファイルを登録せず削除 ----
+    if op == "discard":
+        try:
+            s3.delete_object(Bucket=KB_BUCKET, Key=key)
+        except Exception as e:
+            print("staging discard error:", repr(e))
+        _audit("staging_discard", ctx, key=key)
+        return _resp(200, {"ok": True, "op": "discard", "message": "破棄しました"})
+
+    # ---- 登録：incoming/ → tacit/ へサーバ側コピー＋メタ書き込み＋同期 ----
+    if op == "register":
+        name = key[len(sp):]
+        dot = name.rfind(".")
+        ext = name[dot + 1:].lower() if dot > 0 else ""
+        if ext not in _FILE_EXTS:
+            return _resp(400, {"ok": False, "error": "unsupported_ext"})
+        title = _strip_markers((body.get("title") or "").strip())
+        if not title:
+            return _resp(400, {"ok": False, "error": "title_required"})
+        category = (body.get("category") or "").strip() or "公式マニュアル"
+        sensitivity = (body.get("sensitivity") or "low").strip().lower()
+        if sensitivity not in _SENS_ORDER:
+            sensitivity = "low"
+        # 元ファイルの存在確認＋サイズ上限
+        try:
+            head = s3.head_object(Bucket=KB_BUCKET, Key=key)
+        except Exception:
+            return _resp(404, {"ok": False, "error": "not_found"})
+        if head.get("ContentLength", 0) > MAX_STAGING_BYTES:
+            return _resp(400, {"ok": False, "error": "file_too_large"})
+        # ファイル名を安定キーに（日本語名等は名前ハッシュで代替）＝同名の再登録は上書き
+        stem = name[:dot] if dot > 0 else name
+        slug = _slugify(stem) or ("f-" + hashlib.md5(stem.encode("utf-8")).hexdigest()[:16])
+        doc_id = _official_doc_id(slug)
+        today = _today_jst()
+        meta = _build_meta("official", title, "公式", category, today, sensitivity, slug=slug)
+        dest = KB_PREFIX + "/" + doc_id + "." + ext
+        # 同一 doc_id の旧版（拡張子違い含む）を後で掃除するため先に一覧
+        old = []
+        try:
+            r = s3.list_objects_v2(Bucket=KB_BUCKET, Prefix=KB_PREFIX + "/" + doc_id + ".")
+            old = [o["Key"] for o in r.get("Contents", [])]
+        except Exception:
+            pass
+        try:
+            # サーバ側コピー（本文はLambdaを通らない＝21MBでも安全）。KMS既定暗号化は自動適用。
+            s3.copy_object(Bucket=KB_BUCKET, Key=dest,
+                           CopySource={"Bucket": KB_BUCKET, "Key": key})
+            s3.put_object(Bucket=KB_BUCKET, Key=dest + ".metadata.json",
+                          Body=json.dumps(meta, ensure_ascii=False).encode("utf-8"),
+                          ContentType="application/json")
+        except Exception as e:
+            print("staging register write error:", repr(e))
+            return _resp(500, {"ok": False, "error": "write_failed"})
+        # 今書いた2キー以外（旧拡張子の本文/メタ）を掃除
+        keep = {dest, dest + ".metadata.json"}
+        stale = [{"Key": k} for k in old if k not in keep]
+        if stale:
+            try:
+                s3.delete_objects(Bucket=KB_BUCKET, Delete={"Objects": stale})
+            except Exception as e:
+                print("staging stale cleanup error:", repr(e))
+        # incoming/ の元ファイルを削除（＝移動）
+        try:
+            s3.delete_object(Bucket=KB_BUCKET, Key=key)
+        except Exception as e:
+            print("staging source delete error:", repr(e))
+        _ingest()
+        _audit("staging_register", ctx, id=doc_id, title=title, kind=ext)
+        return _resp(200, {"ok": True, "op": "register", "id": doc_id, "kind": ext,
+                           "message": "登録しました: " + title})
+
+    return _resp(400, {"ok": False, "error": "unknown_op"})

@@ -24,6 +24,7 @@ munu/                           … munu(IIS/classic ASP) に置くファイル
   kb_ask.asp                    … AI質問・会話画面（ログイン必須）
   kb_admin.asp                  … 管理画面（一覧・編集・削除。管理パスワード＋サーバ側認可）
   kb_bulk.asp                   … 公式マニュアルの一括投入（管理者用・.md/.txt＋PDF/Word/Excel等・ブラウザ読取→上書き）
+  kb_bigfile.asp                … 大きいファイルの登録（管理者用・S3のincoming/経由。21MB級もmunuを通さず登録）
   kb_style.css                  … 全画面共通デザイン（見た目はここに集約。ASPにCSSを書かない）
   web.config                    … IIS設定（本文上限8MB＋保護ヘッダ。HTTPS化後にSecure/HSTSを有効化）
 

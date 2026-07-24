@@ -205,6 +205,7 @@ Dim opOk : opOk = (status = 200 And JsonBool(resp, "ok"))
         <a href="kb_admin.asp">管理</a>
       </nav>
       <a class="mini" href="kb_admin.asp">暗黙知の管理</a>
+      <a class="mini" href="kb_bigfile.asp">大きいファイル</a>
       <a class="mini" href="kb_bulk.asp?logout=1">ログアウト</a>
     </header>
     <div class="head"><h1>公式マニュアルの一括投入</h1>
