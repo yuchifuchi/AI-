@@ -71,6 +71,12 @@ Function FriendlyError(status, respText)
     End Select
 End Function
 
+' CSVの1フィールドを安全化（常にダブルクォートで囲み、内部の " は "" にする。
+' 改行・カンマを含む本文も1セルに収まる＝RFC 4180準拠）
+Function CsvField(ByVal s)
+    CsvField = """" & Replace(s & "", """", """""") & """"
+End Function
+
 Dim isConfigured
 isConfigured = (Len(RELAY_URL & "") > 0 And InStr(RELAY_URL, "XXXX") = 0 _
     And Len(RELAY_KEY & "") > 0 And RELAY_KEY <> "REPLACE_RELAY_KEY")
@@ -83,6 +89,37 @@ Call RequireUserLogin("ナレッジ検索AI")
 If Request.QueryString("new") = "1" Then
     Session.Contents.Remove("conv")
     Response.Redirect "kb_ask.asp"
+End If
+
+' ============================================================
+'  会話をCSVでダウンロード（"今開いている会話"＝自分のセッションのみ）
+'   ・サーバに新規保存はしない（＝「Q&Aは記録しない」プライバシー設計を維持）
+'   ・Excelで文字化けしないよう UTF-8 BOM を先頭に付ける
+' ============================================================
+If Request.QueryString("export") = "csv" Then
+    Dim xConv, xTurns, xi, xParts, xN, xQ, xA
+    xConv = Session("conv") & ""
+    Response.Clear
+    Response.ContentType = "text/csv; charset=utf-8"
+    Response.AddHeader "Content-Disposition", "attachment; filename=""kb_conversation.csv"""
+    Response.Write ChrW(&HFEFF)                       ' UTF-8 BOM
+    Response.Write "番号,質問,回答" & vbCrLf
+    If Len(xConv) > 0 Then
+        xTurns = Split(xConv, R)
+        xN = 0
+        For xi = 0 To UBound(xTurns)
+            If Len(xTurns(xi)) > 0 Then
+                xParts = Split(xTurns(xi), U)
+                If UBound(xParts) >= 1 Then
+                    xN = xN + 1
+                    xQ = xParts(0)
+                    xA = Replace(Replace(xParts(1), "[[一般]]", ""), "[[/一般]]", "")
+                    Response.Write CsvField(CStr(xN)) & "," & CsvField(xQ) & "," & CsvField(xA) & vbCrLf
+                End If
+            End If
+        Next
+    End If
+    Response.End
 End If
 
 ' ============================================================
@@ -251,7 +288,8 @@ End If
 
     <p class="links">
       <a href="kb_ask.asp?new=1">🔄 新しい会話を始める</a>
-      ／ <a href="kb_register.asp">気づき登録フォームへ</a>
+<% If Len(conv) > 0 Then %>      ／ <a href="kb_ask.asp?export=csv">⬇ この会話をCSVで保存</a>
+<% End If %>      ／ <a href="kb_register.asp">気づき登録フォームへ</a>
     </p>
   </div>
 
