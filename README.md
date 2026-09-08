@@ -26,6 +26,8 @@ munu/                           … munu(IIS/classic ASP) に置くファイル
   kb_bulk.asp                   … 公式マニュアルの一括投入（管理者用・.md/.txt＋PDF/Word/Excel等・ブラウザ読取→上書き）
   kb_bigfile.asp                … 大きいファイルの登録（管理者用・S3のincoming/経由。21MB級もmunuを通さず登録）
   kb_style.css                  … 全画面共通デザイン（見た目はここに集約。ASPにCSSを書かない）
+  メンテナンス.example.asp      … メンテナンス画面のひな形。「メンテナンス.asp」という名前で
+                                  置いている間だけ、全画面がそこへ誘導される（消せば解除）
   web.config                    … IIS設定（本文上限8MB＋保護ヘッダ。HTTPS化後にSecure/HSTSを有効化）
 
 aws/                            … AWS 側に入れるもの

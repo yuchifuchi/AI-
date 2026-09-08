@@ -7,6 +7,111 @@
 '  匿名S3・公開バケットは使いません（HTTPS + 秘密ヘッダの1本のAPI）。
 ' ============================================================
 
+' ============================================================
+'  メンテナンス誘導（ファイルの「有無」だけで切り替える）
+' ============================================================
+'  MAINT_PAGE のファイルが存在する間だけ、kb_lib.asp を読み込む
+'  全画面（ask/register/admin/bulk/bigfile）をそこへ誘導します。
+'
+'    メンテ開始 … メンテナンス.asp を置く
+'    メンテ終了 … メンテナンス.asp を消す（またはリネーム）
+'
+'  web.config も kb_config.asp も触らないため、アプリプールは再起動されず、
+'  ログイン中のセッションもそのまま保持されます。
+'
+'  ・パスを変えたい場合はこの1行だけ書き換える
+'      同じフォルダ   : "メンテナンス.asp"
+'      アプリ直下固定 : "/tacit2/メンテナンス.asp"
+'    ※日本語ファイル名でも動くよう、誘導先は下の MaintUrl で
+'      パーセントエンコードしてから返す（IE対策）。ASCII名なら不要。
+'  ・存在判定に失敗した環境（FSO無効など）では「メンテしない」側へ倒します。
+'    判定不能でメンテ側に倒すと、ファイルを消しても解除できず
+'    全画面から閉め出される（＝復旧手段が無くなる）ため。
+' ============================================================
+Const MAINT_PAGE = "メンテナンス.asp"
+
+' 日本語ファイル名を Location ヘッダに安全に載せる（/ は残す）
+Function MaintUrl(p)
+    Dim parts, i, seg
+    parts = Split(p & "", "/")
+    For i = 0 To UBound(parts)
+        seg = parts(i)
+        If Len(seg) > 0 Then
+            seg = Server.URLEncode(seg)
+            parts(i) = Replace(seg, "+", "%20")
+        End If
+    Next
+    MaintUrl = Join(parts, "/")
+End Function
+
+Sub MaintenanceGuard()
+    Dim fso, physical, here, target, exists
+
+    target = LCase(MAINT_PAGE & "")
+    If Len(target) = 0 Then Exit Sub
+
+    ' メンテナンス画面自身は誘導しない（無限リダイレクト防止）
+    here = LCase(Request.ServerVariables("SCRIPT_NAME") & "")
+    If Len(here) >= Len(target) Then
+        If Right(here, Len(target)) = target Then Exit Sub
+    End If
+
+    exists = False
+    On Error Resume Next
+    physical = Server.MapPath(MAINT_PAGE)
+    If Err.Number = 0 Then
+        Set fso = CreateObject("Scripting.FileSystemObject")
+        If Err.Number = 0 Then
+            exists = fso.FileExists(physical)
+            Set fso = Nothing
+        End If
+    End If
+    Err.Clear
+    On Error GoTo 0
+    If Not exists Then Exit Sub
+
+    ' ---- ここから先はメンテナンス中 ----
+    ' AJAX(kb_ask.asp?ajax=1) にHTMLを返すと JSON.parse が壊れて
+    ' 画面が無反応になるため、こちらは既存の応答形式に合わせてJSONで返す。
+    If Request.QueryString("ajax") = "1" Then
+        Response.Clear
+        Response.ContentType = "application/json; charset=utf-8"
+        Response.AddHeader "X-Content-Type-Options", "nosniff"
+        Response.AddHeader "Cache-Control", "no-store"
+        Response.Write "{""ok"":false,""message"":""ただいまメンテナンス中です。時間をおいてからお試しください。""}"
+        Response.End
+    End If
+
+    ' 出力が既に始まっていると 302 を送れない（kb_config.asp の %> 直後の
+    ' 改行などで起こり得る）。その場合は meta refresh に切り替えて、
+    ' 必ずメンテナンス画面へ到達させる。
+    Dim u, redirected
+    u = MaintUrl(MAINT_PAGE)
+
+    ' ★Response.Redirect は内部で Response.End を呼ぶが、On Error Resume Next
+    '   の中ではその中断が握りつぶされ、処理が先へ進んでしまう
+    '   （kb_ask.asp の ajax ガード節と同じ罠）。
+    '   そのため中断は必ず OERN の外で自分で行う。
+    redirected = True
+    On Error Resume Next
+    Response.AddHeader "Cache-Control", "no-store"
+    Response.Redirect u
+    If Err.Number <> 0 Then redirected = False
+    Err.Clear
+    On Error GoTo 0
+
+    If Not redirected Then
+        Response.Write "<!DOCTYPE html><html lang=""ja""><head><meta charset=""utf-8"">" & _
+            "<meta http-equiv=""refresh"" content=""0;url=" & u & """>" & _
+            "<title>メンテナンス中</title></head><body>" & _
+            "<p><a href=""" & u & """>ただいまメンテナンス中です</a></p>" & _
+            "</body></html>"
+    End If
+    Response.End
+End Sub
+
+Call MaintenanceGuard()
+
 ' ---- 文字列を JSON に埋め込める形へ（エスケープ）----
 Function JsonEscape(s)
     Dim t, i, code, out, hasCtrl
