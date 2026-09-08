@@ -1,0 +1,147 @@
+<!-- ============================================================
+     類似案件サジェスト ── 貼り付け用スニペット
+     ============================================================
+     ヘルプデスク台帳の「新規登録」画面に、そのまま貼り付けます。
+
+     ・利用者は検索操作をしません。入力しているだけで横に出ます。
+     ・IE11でも動くよう ES5 + XMLHttpRequest で書いています
+       （fetch / アロー関数 / テンプレート文字列は使いません）。
+     ・下の HD_WATCH / HD_DETAIL_URL の2つだけ、実物に合わせてください。
+     ============================================================ -->
+
+<div id="hdSim" class="hd-sim" hidden>
+  <div class="hd-sim-head">
+    <b>過去の似た案件</b>
+    <span id="hdSimStat" class="hd-sim-stat"></span>
+  </div>
+  <div id="hdSimList"></div>
+  <div id="hdSimTerms" class="hd-sim-terms"></div>
+</div>
+
+<style>
+.hd-sim{border:1px solid #d8e0e3; border-left:3px solid #0d9488; border-radius:8px;
+        background:#fff; padding:14px 16px; margin:14px 0; font-size:.9rem;}
+.hd-sim-head{display:flex; align-items:baseline; gap:10px; margin-bottom:10px;}
+.hd-sim-head b{font-size:.95rem;}
+.hd-sim-stat{color:#5f727a; font-size:.78rem;}
+.hd-sim-item{border-top:1px solid #eef2f4; padding:9px 0;}
+.hd-sim-item:first-child{border-top:0;}
+.hd-sim-item a{font-weight:700; text-decoration:none; color:#0b7d72;}
+.hd-sim-item a:hover{text-decoration:underline;}
+.hd-sim-meta{color:#5f727a; font-size:.76rem; margin:2px 0 4px;}
+.hd-sim-ans{color:#33454b; line-height:1.55;}
+.hd-sim-terms{margin-top:10px; padding-top:8px; border-top:1px dashed #e0e7ea;
+              color:#5f727a; font-size:.74rem;}
+.hd-sim-none{color:#5f727a;}
+</style>
+
+<script>
+(function () {
+  // ---- ここだけ実物に合わせる ------------------------------
+  // 監視する入力欄（問い合わせ内容の textarea / 件名の input）。
+  // 複数指定でき、連結した文字列で検索します。
+  var HD_WATCH = ["#件名", "#問い合わせ内容"];
+
+  // 詳細画面のURL。末尾にIDを付けて開きます。開かせたくない場合は "" に。
+  var HD_DETAIL_URL = "台帳詳細.asp?id=";
+
+  // 編集画面で使う場合、自分自身を候補から除くためのID（新規なら ""）
+  var HD_EXCLUDE_ID = "";
+  // ----------------------------------------------------------
+
+  var API = "hd_similar.asp";
+  var MIN = 4, WAIT = 600;
+  var box  = document.getElementById("hdSim");
+  var list = document.getElementById("hdSimList");
+  var stat = document.getElementById("hdSimStat");
+  var tms  = document.getElementById("hdSimTerms");
+  var timer = null, xhr = null, last = "";
+
+  function nodes() {
+    var out = [], i, el;
+    for (i = 0; i < HD_WATCH.length; i++) {
+      el = document.querySelector(HD_WATCH[i]);
+      if (el) out.push(el);
+    }
+    return out;
+  }
+  function text() {
+    var els = nodes(), s = [], i;
+    for (i = 0; i < els.length; i++) { s.push(els[i].value || ""); }
+    return s.join(" ").replace(/^\s+|\s+$/g, "");
+  }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function render(d) {
+    var h = "", i, it;
+    if (!d.items || !d.items.length) {
+      list.innerHTML = '<div class="hd-sim-none">似た案件は見つかりませんでした。</div>';
+      tms.innerHTML = "";
+      stat.innerHTML = "";
+      box.hidden = false;
+      return;
+    }
+    for (i = 0; i < d.items.length; i++) {
+      it = d.items[i];
+      h += '<div class="hd-sim-item">';
+      if (HD_DETAIL_URL) {
+        h += '<a href="' + esc(HD_DETAIL_URL) + encodeURIComponent(it.id) +
+             '" target="_blank" rel="noopener">' + esc(it.title) + "</a>";
+      } else {
+        h += "<b>" + esc(it.title) + "</b>";
+      }
+      h += '<div class="hd-sim-meta">' + esc(it.date) +
+           (it.cat ? " ／ " + esc(it.cat) : "") + "</div>";
+      if (it.answer) { h += '<div class="hd-sim-ans">' + esc(it.answer) + "</div>"; }
+      h += "</div>";
+    }
+    list.innerHTML = h;
+    stat.innerHTML = d.items.length + "件";
+    tms.innerHTML = (d.terms && d.terms.length)
+      ? "検索に使った語：" + esc(d.terms.join("、")) : "";
+    box.hidden = false;
+  }
+
+  function run() {
+    var q = text();
+    if (q.length < MIN) { box.hidden = true; last = ""; return; }
+    if (q === last) { return; }
+    last = q;
+
+    if (xhr) { try { xhr.abort(); } catch (e) {} }
+    xhr = new XMLHttpRequest();
+    xhr.open("POST", API, true);
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) { return; }
+      if (xhr.status !== 200) { return; }          // 失敗しても入力の邪魔はしない
+      var d;
+      try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
+      if (d && d.ok) { render(d); }
+    };
+    stat.innerHTML = "検索中…";
+    xhr.send("q=" + encodeURIComponent(q) +
+             "&exclude=" + encodeURIComponent(HD_EXCLUDE_ID));
+  }
+
+  function schedule() {
+    if (timer) { clearTimeout(timer); }
+    timer = setTimeout(run, WAIT);               // 打鍵のたびに投げない
+  }
+
+  var els = nodes(), i;
+  for (i = 0; i < els.length; i++) {
+    if (els[i].addEventListener) {
+      els[i].addEventListener("input", schedule, false);
+      els[i].addEventListener("blur", run, false);
+    } else if (els[i].attachEvent) {             // 古いIE
+      els[i].attachEvent("onkeyup", schedule);
+      els[i].attachEvent("onblur", run);
+    }
+  }
+})();
+</script>

@@ -28,3 +28,6 @@ __pycache__/
 # 共有用のひな形は munu/メンテナンス.example.asp を使う。
 メンテナンス.asp
 munu/メンテナンス.asp
+
+# ヘルプデスク台帳の接続設定（.accdb の実パスを含む）
+helpdesk/hd_config.asp
